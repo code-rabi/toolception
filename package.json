@@ -21,7 +21,8 @@
     "prepublishOnly": "npm run typecheck && npm run build && npm run test:run",
     "dev:basic": "npx --yes tsx examples/basic.ts",
     "dev:static-startup": "npx --yes tsx examples/static-startup.ts",
-    "dev:static-all": "npx --yes tsx examples/static-all.ts"
+    "dev:static-all": "npx --yes tsx examples/static-all.ts",
+    "dev:server-demo": "npx --yes tsx local-server-tests/server-demo.ts"
   },
   "peerDependencies": {},
   "dependencies": {

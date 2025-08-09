@@ -230,8 +230,7 @@ export class FastifyTransport {
             id: null,
           };
         }
-        transport.close?.();
-        reply.code(204);
+        reply.code(204).send();
         return reply;
       }
     );

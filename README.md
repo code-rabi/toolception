@@ -91,7 +91,7 @@ createMcpServer({
 });
 ```
 
-See `examples/` for runnable snippets. See `agents.md` for LLM/agent-oriented guidance.
+See `examples/` for runnable snippets. See `AGENTS.md` for LLM/agent-oriented guidance.
 
 ## API
 
