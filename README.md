@@ -2,10 +2,10 @@
 
 ## Quickstart
 
-Install peers (consumers):
+Install:
 
 ```bash
-npm i @modelcontextprotocol/sdk zod fastify
+npm i toolception
 ```
 
 Create a server with dynamic tool management (Fastify transport included):
