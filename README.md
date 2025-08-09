@@ -125,26 +125,20 @@ const clientId = "my-stable-client-id"; // e.g., from disk/env
 
 // Transport manages HTTP, including SSE and JSON-RPC framing
 const transport = new StreamableHTTPClientTransport(
+  new URL("http://localhost:3000/mcp"),
   {
-    url: "http://localhost:3000/mcp",
-    headers: { "mcp-client-id": clientId },
-  },
-  {
-    // Optional: receive server-sent events (notifications)
-    onreconnect: () => console.log("Reconnected"),
+    requestInit: { headers: { "mcp-client-id": clientId } },
   }
 );
 
 // High-level MCP client
 const client = new Client({ name: "example-client", version: "1.0.0" });
 
-// Initialize will negotiate capabilities and establish a session.
-// The server issues the session id; the transport handles it automatically.
+// Connect negotiates capabilities and establishes a session. Transport handles session id.
 await client.connect(transport);
-await client.initialize();
 
 // Call a tool (example)
-const res = await client.callTool("list_tools", {});
+const res = await client.listTools();
 console.log(res);
 
 // Close when done
@@ -164,20 +158,22 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 
 const clientId = "my-stable-client-id";
-const transport = new StreamableHTTPClientTransport({
-  url: "http://localhost:3000/mcp",
-  headers: { "mcp-client-id": clientId },
-});
+const transport = new StreamableHTTPClientTransport(
+  new URL("http://localhost:3000/mcp"),
+  {
+    requestInit: { headers: { "mcp-client-id": clientId } },
+  }
+);
 
 const client = new Client({ name: "example-client", version: "1.0.0" });
 await client.connect(transport);
-await client.initialize();
 
-// Session id is issued by the server on initialize and handled by the transport.
-// You do not need to manually manage the mcp-session-id header.
+// Session id is handled by the transport. No need to manually set mcp-session-id.
 
-// Example SSE consumption happens under the hood; you can subscribe to notifications
-client.on("notification", (n) => console.log("notification:", n));
+// Call tools
+await client.callTool({ name: "enable_toolset", arguments: { name: "core" } });
+const ping = await client.callTool({ name: "core.ping", arguments: {} });
+console.log(ping);
 
 // When finished
 await client.close();

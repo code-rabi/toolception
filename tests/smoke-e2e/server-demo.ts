@@ -1,6 +1,7 @@
-// Run with: npx --yes tsx tests/e2e-local/server-demo.ts
+// Run with: npx --yes tsx tests/smoke-e2e/server-demo.ts
 import { createMcpServer } from "../../src/server/createMcpServer.js";
 import type { ToolSetCatalog, ModuleLoader } from "../../src/types/index.js";
+import { z } from "zod";
 
 // Minimal demo catalog with one direct toolset and one module-derived toolset
 const catalog: ToolSetCatalog = {
@@ -24,14 +25,11 @@ const moduleLoaders: Record<string, ModuleLoader> = {
     {
       name: "echo",
       description: "Echo back provided text",
-      inputSchema: {
-        type: "object",
-        properties: { text: { type: "string" } },
-        required: ["text"],
+      inputSchema: { text: z.string().describe("Text to echo") } as any,
+      handler: async (args: unknown) => {
+        const { text } = (args as { text?: string }) ?? {};
+        return { content: [{ type: "text", text: text ?? "" }] } as any;
       },
-      handler: async ({ text }: { text: string }) => ({
-        content: [{ type: "text", text }],
-      }),
     },
   ],
 };
