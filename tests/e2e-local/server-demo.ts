@@ -1,6 +1,6 @@
-// Run with: npx --yes tsx local-server-tests/server-demo.ts
-import { createMcpServer } from "../src/server/createMcpServer.js";
-import type { ToolSetCatalog, ModuleLoader } from "../src/types/index.js";
+// Run with: npx --yes tsx tests/e2e-local/server-demo.ts
+import { createMcpServer } from "../../src/server/createMcpServer.js";
+import type { ToolSetCatalog, ModuleLoader } from "../../src/types/index.js";
 
 // Minimal demo catalog with one direct toolset and one module-derived toolset
 const catalog: ToolSetCatalog = {

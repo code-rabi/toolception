@@ -4,7 +4,7 @@ set -euo pipefail
 PORT=${PORT:-3003}
 BASE_URL="http://localhost:${PORT}"
 PROTOCOL_VERSION=${PROTOCOL_VERSION:-2024-11-05}
-LOG_FILE="local-server-tests/test-mcp.log"
+LOG_FILE="tests/e2e-local/test-mcp.log"
 
 MCP_URL="${BASE_URL}/mcp"
 echo "[test-mcp] Starting MCP flow tests against ${BASE_URL} (url=${MCP_URL})" | tee "${LOG_FILE}"
@@ -34,7 +34,7 @@ CLIENT_ID="demo-client-$(date +%s)"
 
 log_section "Initialize session via POST /mcp with JSON-RPC initialize"
 init_body=$(cat <<JSON
-{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"${PROTOCOL_VERSION}","capabilities":{},"clientInfo":{"name":"local-server-tests","version":"0.0.0"}}}
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"${PROTOCOL_VERSION}","capabilities":{},"clientInfo":{"name":"e2e-local","version":"0.0.0"}}}
 JSON
 )
 tmp_headers=$(mktemp)
@@ -119,4 +119,5 @@ expect_http_code 204 "${status}"
 
 echo | tee -a "${LOG_FILE}"
 echo "[test-mcp] MCP flow tests completed" | tee -a "${LOG_FILE}"
+
 

@@ -3,7 +3,7 @@ set -euo pipefail
 
 PORT=${PORT:-3003}
 BASE_URL="http://localhost:${PORT}"
-LOG_FILE="local-server-tests/test-http.log"
+LOG_FILE="tests/e2e-local/test-http.log"
 
 echo "[test-http] Starting HTTP endpoint tests against ${BASE_URL}" | tee "${LOG_FILE}"
 
