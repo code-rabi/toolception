@@ -108,6 +108,81 @@ Meta-tools (enabled by default in DYNAMIC):
 
 - enable_toolset, disable_toolset, list_toolsets, list_tools
 
+## Client ID lifecycle
+
+- **What**: Clients identify themselves via the `mcp-client-id` HTTP header on every request.
+- **Who generates it**: The client. Use a stable identifier (e.g., UUID persisted locally).
+- **If omitted**: The server assigns a one-off `anon-<uuid>` and skips caching; this is unsuitable for multi-request flows and SSE.
+
+Examples (official MCP client)
+
+```ts
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+
+// Create a stable client id (persist it for reuse across runs)
+const clientId = "my-stable-client-id"; // e.g., from disk/env
+
+// Transport manages HTTP, including SSE and JSON-RPC framing
+const transport = new StreamableHTTPClientTransport(
+  {
+    url: "http://localhost:3000/mcp",
+    headers: { "mcp-client-id": clientId },
+  },
+  {
+    // Optional: receive server-sent events (notifications)
+    onreconnect: () => console.log("Reconnected"),
+  }
+);
+
+// High-level MCP client
+const client = new Client({ name: "example-client", version: "1.0.0" });
+
+// Initialize will negotiate capabilities and establish a session.
+// The server issues the session id; the transport handles it automatically.
+await client.connect(transport);
+await client.initialize();
+
+// Call a tool (example)
+const res = await client.callTool("list_tools", {});
+console.log(res);
+
+// Close when done
+await client.close();
+```
+
+## Session ID lifecycle
+
+- **What**: A per-session identifier returned by the server on initialize.
+- **Who generates it**: The server during initialize. The client must read it from the initialize response headers and send it back on subsequent requests via `mcp-session-id`.
+- **Used for**: Follow-up JSON-RPC requests (POST `/mcp`), SSE stream (GET `/mcp`), and termination (DELETE `/mcp`).
+
+Examples (official MCP client)
+
+```ts
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+
+const clientId = "my-stable-client-id";
+const transport = new StreamableHTTPClientTransport({
+  url: "http://localhost:3000/mcp",
+  headers: { "mcp-client-id": clientId },
+});
+
+const client = new Client({ name: "example-client", version: "1.0.0" });
+await client.connect(transport);
+await client.initialize();
+
+// Session id is issued by the server on initialize and handled by the transport.
+// You do not need to manually manage the mcp-session-id header.
+
+// Example SSE consumption happens under the hood; you can subscribe to notifications
+client.on("notification", (n) => console.log("notification:", n));
+
+// When finished
+await client.close();
+```
+
 ## Tool types
 
 - Direct tools: defined inline under `catalog[toolset].tools` and registered when that toolset is enabled.
