@@ -1,0 +1,71 @@
+{
+  "name": "toolception",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "prepublishOnly": "npm run typecheck && npm run build && npm run test:run",
+    "dev:basic": "npx --yes tsx examples/basic.ts",
+    "dev:static-startup": "npx --yes tsx examples/static-startup.ts",
+    "dev:static-all": "npx --yes tsx examples/static-all.ts"
+  },
+  "peerDependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "fastify": "^5.0.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@fastify/cors": "^10.0.1",
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@types/connect": "^3.4.38",
+    "@types/node": "^20.11.5",
+    "@vitest/coverage-v8": "^3.2.4",
+    "fastify": "^5.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.3.3",
+    "vite": "^5.3.1",
+    "vitest": "^3.2.4",
+    "zod": "^3.22.4"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "license": "Apache-2.0",
+  "description": "mcp server with dynamic tool discovery for ai assistants",
+  "author": "code-rabi",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "keywords": [
+    "model-context-protocol",
+    "mcp",
+    "mcp-server",
+    "dynamic-tools",
+    "toolset",
+    "tool-management",
+    "json-rpc",
+    "fastify",
+    "zod",
+    "ai",
+    "llm",
+    "agents"
+  ]
+}
