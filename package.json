@@ -45,7 +45,7 @@
     "node": ">=20.0.0"
   },
   "license": "Apache-2.0",
-  "description": "mcp server with dynamic tool discovery for ai assistants",
+  "description": "Dynamic MCP server toolkit for runtime toolset management with Fastify transport and meta-tools",
   "author": "code-rabi",
   "sideEffects": false,
   "exports": {
