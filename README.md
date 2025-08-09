@@ -54,8 +54,6 @@ const { start, close } = await createMcpServer({
   moduleLoaders,
   startup: { mode: "DYNAMIC" },
   http: { port: 3000 },
-  mcp: { name: "my-mcp-server", version: "0.1.0" },
-  configSchema,
 });
 await start();
 
@@ -72,7 +70,7 @@ process.on("SIGTERM", async () => {
 
 ## Static startup
 
-Enable some or ALL toolsets at bootstrap (meta-tools off by default in STATIC):
+Enable some or ALL toolsets at bootstrap:
 
 ```ts
 const staticCatalog = {
@@ -98,26 +96,26 @@ See `examples/` for runnable snippets. See `agents.md` for LLM/agent-oriented gu
 ## API
 
 - createMcpServer(options): creates an MCP server with dynamic/static tool management and Fastify transport.
-  - catalog: Record<string, { name, description, tools?: McpToolDefinition[], modules?: string[] }>
-  - moduleLoaders?: Record<string, ModuleLoader> (returns McpToolDefinition[] for MCP server)
+  - catalog: Record<string, { name: string; description: string; tools?: McpToolDefinition[]; modules?: string[]; decisionCriteria?: string }>
+  - moduleLoaders?: Record<string, ModuleLoader> (loader returns McpToolDefinition[]; used when enabling toolsets that reference its key)
   - startup?: { mode: "DYNAMIC" | "STATIC"; toolsets?: string[] | "ALL" }
   - registerMetaTools?: boolean
-  - http?: { host?, port?, basePath?, cors?, logger? }
-  - mcp?: { name?, version?, capabilities? } (listChanged is computed internally)
-  - configSchema?: object (served at /.well-known/mcp-config)
+  - exposurePolicy?: ExposurePolicy
+  - context?: unknown (passed to loaders when resolving tools)
+  - http?: { host?: string; port?: number; basePath?: string; cors?: boolean; logger?: boolean }
 
 Meta-tools (enabled by default in DYNAMIC):
 
-- enable_toolset, disable_toolset, list_toolsets, describe_toolset, list_tools
+- enable_toolset, disable_toolset, list_toolsets, list_tools
 
 ## Tool types
 
-- Direct tools: defined inline under `catalog[toolset].tools` and registered immediately when that toolset is enabled.
-- Module-produced tools: returned by `moduleLoaders[moduleKey]()` and registered when any toolset referencing that `moduleKey` is enabled.
+- Direct tools: defined inline under `catalog[toolset].tools` and registered when that toolset is enabled.
+- Module-produced tools: returned by `moduleLoaders[moduleKey]()` and registered when enabling a toolset that references `modules: [moduleKey]`.
 
 Use direct tools for simple/local utilities; use module-produced tools to share tools across multiple toolsets or lazily load heavier definitions.
 
-Note on dynamic mode: Both direct and module-produced tools are supported. Module-produced tools are recommended (not required) to minimize startup footprint and enable truly on-demand loading.
+Note on dynamic mode: Both direct and module-produced tools are supported. Module-produced tools help minimize startup footprint by enabling on-demand loading at enable-time.
 
 ## Startup modes
 
