@@ -1,5 +1,16 @@
 # Toolception – Dynamic MCP Tooling Library
 
+## Table of Contents
+
+- [Quickstart](#quickstart)
+- [Static startup](#static-startup)
+- [API](#api)
+- [Client ID lifecycle](#client-id-lifecycle)
+- [Session ID lifecycle](#session-id-lifecycle)
+- [Tool types](#tool-types)
+- [Startup modes](#startup-modes)
+- [License](#license)
+
 ## Quickstart
 
 Install:
@@ -91,8 +102,6 @@ createMcpServer({
 });
 ```
 
-See `examples/` for runnable snippets. See `AGENTS.md` for LLM/agent-oriented guidance.
-
 ## API
 
 - createMcpServer(options): creates an MCP server with dynamic/static tool management and Fastify transport.
@@ -103,10 +112,13 @@ See `examples/` for runnable snippets. See `AGENTS.md` for LLM/agent-oriented gu
   - exposurePolicy?: ExposurePolicy
   - context?: unknown (passed to loaders when resolving tools)
   - http?: { host?: string; port?: number; basePath?: string; cors?: boolean; logger?: boolean }
+  - mcp?: { name?: string; version?: string; capabilities?: Record<string, unknown> }
+  - configSchema?: object (served at `GET /.well-known/mcp-config`)
 
-Meta-tools (enabled by default in DYNAMIC):
+Meta-tools (enabled by default when mode is DYNAMIC):
 
-- enable_toolset, disable_toolset, list_toolsets, list_tools
+- enable_toolset, disable_toolset, list_tools (registered whenever meta-tools are enabled)
+- list_toolsets, describe_toolset (registered only in DYNAMIC mode)
 
 ## Client ID lifecycle
 
@@ -203,9 +215,6 @@ The server operates in one of two primary modes (legacy load-all is not recommen
    - Meta-tools limited to `list_tools` by default
    - Best for known, consistent tool requirements
 
-## Examples
+## License
 
-- See `examples/` for runnable scripts:
-  - `npx --yes tsx examples/basic.ts`
-  - `npx --yes tsx examples/static-startup.ts`
-  - `npx --yes tsx examples/static-all.ts`
+Apache-2.0. See `LICENSE` for details.

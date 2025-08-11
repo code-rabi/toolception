@@ -1,7 +1,7 @@
 {
   "name": "toolception",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -18,12 +18,7 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "prepublishOnly": "npm run typecheck && npm run build && npm run test:run",
-    "dev:basic": "npx --yes tsx examples/basic.ts",
-    "dev:static-startup": "npx --yes tsx examples/static-startup.ts",
-    "dev:static-all": "npx --yes tsx examples/static-all.ts",
-    "dev:server-demo": "npx --yes tsx tests/smoke-e2e/server-demo.ts",
-    "dev:client-demo": "npx --yes tsx tests/smoke-e2e/client-demo.ts"
+    "prepublishOnly": "npm run typecheck && npm run build && npm run test:run"
   },
   "peerDependencies": {},
   "dependencies": {
