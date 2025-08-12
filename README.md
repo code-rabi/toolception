@@ -1,23 +1,44 @@
 # Toolception – Dynamic MCP Tooling Library
 
-## Quickstart
+[![npm version](https://img.shields.io/npm/v/toolception.svg)](https://www.npmjs.com/package/toolception)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-Install:
+## Table of Contents
+
+- [Starter guide](#starter-guide)
+- [Static startup](#static-startup)
+- [API](#api)
+- [Client ID lifecycle](#client-id-lifecycle)
+- [Session ID lifecycle](#session-id-lifecycle)
+- [Tool types](#tool-types)
+- [Startup modes](#startup-modes)
+- [License](#license)
+
+## Starter guide
+
+### Step 1: Install
 
 ```bash
 npm i toolception
 ```
 
-Create a server with dynamic tool management (Fastify transport included):
+### Step 2: Import Toolception
 
 ```ts
 import { createMcpServer } from "toolception";
+```
 
+### Step 3: Define a toolset catalog
+
+```ts
 const catalog = {
   quotes: { name: "Quotes", description: "Market quotes", modules: ["quotes"] },
 };
+```
 
-// A simple MCP server tool used below
+### Step 4: Define a tool
+
+```ts
 const quoteTool = {
   name: "price",
   description: "Return a fake price",
@@ -30,15 +51,19 @@ const quoteTool = {
     content: [{ type: "text", text: `${symbol}: 123.45` }],
   }),
 } as const;
+```
 
-// Module loaders return MCP server tools (McpToolDefinition[]) that will be
-// registered on the MCP server. Each tool must include `name`, `description`,
-// a JSON Schema `inputSchema`, and a `handler` that returns MCP content
-// (e.g., { content: [{ type: 'text', text: '...' }] }).
+### Step 5: Provide module loaders
+
+```ts
 const moduleLoaders = {
   quotes: async () => [quoteTool],
 };
+```
 
+### Step 6: (Optional) Configuration schema
+
+```ts
 const configSchema = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
   type: "object",
@@ -48,16 +73,24 @@ const configSchema = {
   },
   required: ["REQUIRED_PARAM"],
 } as const;
+```
 
+### Step 7: Create and start the MCP server
+
+```ts
 const { start, close } = await createMcpServer({
   catalog,
   moduleLoaders,
   startup: { mode: "DYNAMIC" },
   http: { port: 3000 },
+  // configSchema, // uncomment to expose at /.well-known/mcp-config
 });
 await start();
+```
 
-// Graceful shutdown
+### Step 8: Graceful shutdown
+
+```ts
 process.on("SIGINT", async () => {
   await close();
   process.exit(0);
@@ -91,22 +124,73 @@ createMcpServer({
 });
 ```
 
-See `examples/` for runnable snippets. See `AGENTS.md` for LLM/agent-oriented guidance.
-
 ## API
 
-- createMcpServer(options): creates an MCP server with dynamic/static tool management and Fastify transport.
-  - catalog: Record<string, { name: string; description: string; tools?: McpToolDefinition[]; modules?: string[]; decisionCriteria?: string }>
-  - moduleLoaders?: Record<string, ModuleLoader> (loader returns McpToolDefinition[]; used when enabling toolsets that reference its key)
-  - startup?: { mode: "DYNAMIC" | "STATIC"; toolsets?: string[] | "ALL" }
-  - registerMetaTools?: boolean
-  - exposurePolicy?: ExposurePolicy
-  - context?: unknown (passed to loaders when resolving tools)
-  - http?: { host?: string; port?: number; basePath?: string; cors?: boolean; logger?: boolean }
+### createMcpServer(options)
 
-Meta-tools (enabled by default in DYNAMIC):
+Creates an MCP server with dynamic/static tool management and Fastify HTTP transport.
 
-- enable_toolset, disable_toolset, list_toolsets, list_tools
+#### options.catalog (required)
+
+`Record<string, ToolSetDefinition>`
+
+- Defines available toolsets to expose. Each item includes `name`, `description`, optional inline `tools`, optional `modules` (for lazy loaders), and optional `decisionCriteria`.
+
+#### options.moduleLoaders (optional)
+
+`Record<string, ModuleLoader>`
+
+- Maps module keys to async loaders returning `McpToolDefinition[]`. Referenced by toolsets via `modules: [key]`.
+
+#### options.startup (optional)
+
+`{ mode?: "DYNAMIC" | "STATIC"; toolsets?: string[] | "ALL" }`
+
+- Controls startup behavior. In STATIC mode, pre-load specific toolsets (or ALL). In DYNAMIC, register meta-tools and load on demand.
+
+#### options.registerMetaTools (optional)
+
+`boolean` (default: true in DYNAMIC mode; false in STATIC unless explicitly set)
+
+- Whether to register management tools like `enable_toolset`, `disable_toolset`, `list_tools`.
+
+#### options.exposurePolicy (optional)
+
+`ExposurePolicy`
+
+- Limits and namespacing for registered tools (e.g., `maxActiveToolsets`, `namespaceToolsWithSetKey`, `allowlist`/`denylist`).
+
+#### options.context (optional)
+
+`unknown`
+
+- Arbitrary context passed to `moduleLoaders` during tool resolution.
+
+#### options.http (optional)
+
+`{ host?: string; port?: number; basePath?: string; cors?: boolean; logger?: boolean }`
+
+- Fastify transport configuration. Defaults: host `0.0.0.0`, port `3000`, basePath `/`, CORS enabled, logger disabled.
+
+#### options.mcp (optional)
+
+`{ name?: string; version?: string; capabilities?: Record<string, unknown> }`
+
+- Overrides MCP server identity and capabilities; `tools.listChanged` is set automatically based on mode.
+
+#### options.configSchema (optional)
+
+`object`
+
+- JSON Schema exposed at `GET /.well-known/mcp-config` for client discovery.
+
+### Meta-tools
+
+Enabled by default when mode is DYNAMIC (or when `registerMetaTools` is true):
+
+- `enable_toolset`, `disable_toolset`, `list_tools`
+  Only in DYNAMIC mode:
+- `list_toolsets`, `describe_toolset`
 
 ## Client ID lifecycle
 
@@ -203,9 +287,6 @@ The server operates in one of two primary modes (legacy load-all is not recommen
    - Meta-tools limited to `list_tools` by default
    - Best for known, consistent tool requirements
 
-## Examples
+## License
 
-- See `examples/` for runnable scripts:
-  - `npx --yes tsx examples/basic.ts`
-  - `npx --yes tsx examples/static-startup.ts`
-  - `npx --yes tsx examples/static-all.ts`
+Apache-2.0. See `LICENSE` for details.

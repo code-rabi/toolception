@@ -1,0 +1,73 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Ensure tag is on default branch
+        run: |
+          DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
+          if [ -z "$DEFAULT_BRANCH" ]; then
+            DEFAULT_BRANCH=$(git remote show origin | sed -n '/HEAD branch/s/.*: //p')
+          fi
+          TAG_REF="${GITHUB_REF#refs/tags/}"
+          TAG_SHA=$(git rev-list -n 1 "$TAG_REF")
+          git fetch origin "$DEFAULT_BRANCH":"refs/remotes/origin/$DEFAULT_BRANCH"
+          MAIN_SHA=$(git rev-parse "refs/remotes/origin/$DEFAULT_BRANCH")
+          if [ "$TAG_SHA" != "$MAIN_SHA" ]; then
+            echo "Tag $TAG_REF must point to latest $DEFAULT_BRANCH ($MAIN_SHA), but points to $TAG_SHA" >&2
+            exit 1
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+          cache: "npm"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify version matches tag and not private
+        id: verify
+        run: |
+          TAG_VERSION=${GITHUB_REF#refs/tags/v}
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          IS_PRIVATE=$(node -p "Boolean(require('./package.json').private).toString()")
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "Tag version v$TAG_VERSION does not match package.json version $PKG_VERSION" >&2
+            exit 1
+          fi
+          if [ "$IS_PRIVATE" = "true" ]; then
+            echo "package.json has private:true. Publishing public packages requires private:false" >&2
+            exit 1
+          fi
+          echo "version=$PKG_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm run test:run
+
+      - name: Build
+        run: npm run build
+
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm publish --access public --verbose
