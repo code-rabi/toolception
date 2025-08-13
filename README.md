@@ -75,14 +75,25 @@ const configSchema = {
 } as const;
 ```
 
-### Step 7: Create and start the MCP server
+### Step 7: Create the MCP SDK server and start Toolception
 
 ```ts
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+
+// You own the SDK server; pass a factory into Toolception (required in DYNAMIC mode)
+const createServer = () =>
+  new McpServer({
+    name: "my-mcp-server",
+    version: "0.0.0",
+    capabilities: { tools: { listChanged: true } },
+  });
+
 const { start, close } = await createMcpServer({
   catalog,
   moduleLoaders,
   startup: { mode: "DYNAMIC" },
   http: { port: 3000 },
+  createServer,
   // configSchema, // uncomment to expose at /.well-known/mcp-config
 });
 await start();
@@ -103,9 +114,11 @@ process.on("SIGTERM", async () => {
 
 ## Static startup
 
-Enable some or ALL toolsets at bootstrap:
+Enable some or ALL toolsets at bootstrap. Note: provide a server or factory:
 
 ```ts
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+
 const staticCatalog = {
   search: { name: "Search", description: "Search tools", modules: ["search"] },
   quotes: { name: "Quotes", description: "Market quotes", modules: ["quotes"] },
@@ -115,12 +128,22 @@ createMcpServer({
   catalog: staticCatalog,
   startup: { mode: "STATIC", toolsets: ["search", "quotes"] },
   http: { port: 3001 },
+  server: new McpServer({
+    name: "static-1",
+    version: "0.0.0",
+    capabilities: { tools: { listChanged: false } },
+  }),
 });
 
 createMcpServer({
   catalog: staticCatalog,
   startup: { mode: "STATIC", toolsets: "ALL" },
   http: { port: 3002 },
+  server: new McpServer({
+    name: "static-2",
+    version: "0.0.0",
+    capabilities: { tools: { listChanged: false } },
+  }),
 });
 ```
 
@@ -128,7 +151,13 @@ createMcpServer({
 
 ### createMcpServer(options)
 
-Creates an MCP server with dynamic/static tool management and Fastify HTTP transport.
+Wires your MCP SDK server to dynamic/static tool management and a Fastify HTTP transport.
+
+Requirements
+
+- `createServer` must be provided.
+- In DYNAMIC mode, a fresh server instance is created per client via `createServer`.
+- In STATIC mode, a single server instance is created once via `createServer` and reused for all clients.
 
 #### options.catalog (required)
 
@@ -142,11 +171,58 @@ Creates an MCP server with dynamic/static tool management and Fastify HTTP trans
 
 - Maps module keys to async loaders returning `McpToolDefinition[]`. Referenced by toolsets via `modules: [key]`.
 
+Usage and behavior
+
+| Aspect           | Details                                                                                                                                                  |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key naming       | The object key is the module identifier referenced in `catalog[toolset].modules`. Example: `{ ext: async () => [...] }` and `modules: ["ext"]`.          |
+| Loader signature | `(context?: unknown) => Promise<McpToolDefinition[]>` or `McpToolDefinition[]`                                                                           |
+| When called      | STATIC mode: at startup (for specified toolsets or ALL). DYNAMIC mode: when a toolset is enabled via meta-tools.                                         |
+| Return value     | An array of tools to register. Tool names should be unique per toolset; if `namespaceToolsWithSetKey` is true, names are prefixed at registration.       |
+| Errors           | Throwing rejects the enable/preload flow for that toolset and surfaces an error to the caller.                                                           |
+| Idempotency      | Loaders may be invoked multiple times across runs/clients. Keep them deterministic/idempotent. Implement internal caching if they perform expensive I/O. |
+
+Example
+
+```ts
+const moduleLoaders = {
+  ext: async (ctx?: unknown) => [
+    {
+      name: "echo",
+      description: "Echo back provided text",
+      inputSchema: {
+        type: "object",
+        properties: { text: { type: "string" } },
+        required: ["text"],
+      },
+      handler: async ({ text }: { text: string }) => ({
+        content: [{ type: "text", text }],
+      }),
+    },
+  ],
+};
+
+const catalog = {
+  ext: { name: "Extensions", description: "Extra tools", modules: ["ext"] },
+};
+```
+
 #### options.startup (optional)
 
 `{ mode?: "DYNAMIC" | "STATIC"; toolsets?: string[] | "ALL" }`
 
 - Controls startup behavior. In STATIC mode, pre-load specific toolsets (or ALL). In DYNAMIC, register meta-tools and load on demand.
+
+Startup precedence and validation
+
+| Input                                                | Effective mode | Toolset handling                    | Outcome/Notes                                                                    |
+| ---------------------------------------------------- | -------------- | ----------------------------------- | -------------------------------------------------------------------------------- |
+| `startup.mode = "DYNAMIC"` (toolsets present or not) | DYNAMIC        | `startup.toolsets` is ignored       | Manage toolsets at runtime via meta-tools; logs a warning if `toolsets` provided |
+| `startup.mode = "STATIC"`, `toolsets = "ALL"`        | STATIC         | Preload all toolsets from `catalog` | OK                                                                               |
+| `startup.mode = "STATIC"`, `toolsets = [names]`      | STATIC         | Validate names against `catalog`    | Invalid names warn; if none valid remain → error                                 |
+| No `startup.mode`, `toolsets = "ALL"`                | STATIC         | Preload all toolsets                | OK                                                                               |
+| No `startup.mode`, `toolsets = [names]`              | STATIC         | Validate names against `catalog`    | Invalid names warn; if none valid remain → error                                 |
+| No `startup.mode`, no `toolsets`                     | DYNAMIC        | No preloads                         | Default behavior; manage toolsets at runtime via meta-tools                      |
 
 #### options.registerMetaTools (optional)
 
@@ -158,7 +234,21 @@ Creates an MCP server with dynamic/static tool management and Fastify HTTP trans
 
 `ExposurePolicy`
 
-- Limits and namespacing for registered tools (e.g., `maxActiveToolsets`, `namespaceToolsWithSetKey`, `allowlist`/`denylist`).
+- Controls which toolsets can be activated and how tools are named when registered.
+
+| Field                      | Type                          | Purpose                                                                            | Example                                                              |
+| -------------------------- | ----------------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `maxActiveToolsets`        | `number`                      | Limit how many toolsets can be active at once. Prevents tool bloat.                | `{ maxActiveToolsets: 1 }` blocks enabling a second toolset          |
+| `namespaceToolsWithSetKey` | `boolean`                     | Prefix tool names with the toolset key when registering, to avoid name collisions. | With `true`, enabling `core` registers `core.ping` instead of `ping` |
+| `allowlist`                | `string[]`                    | Only these toolsets may be enabled. Others are denied.                             | `{ allowlist: ["core"] }` prevents enabling `ext`                    |
+| `denylist`                 | `string[]`                    | These toolsets cannot be enabled.                                                  | `{ denylist: ["ext"] }` blocks `ext`                                 |
+| `onLimitExceeded`          | `(attempted, active) => void` | Callback when `maxActiveToolsets` would be exceeded.                               | Log or telemetry hook                                                |
+
+Notes
+
+- Policy is enforced at enable time (via meta-tools or static preload).
+- If both `allowlist` and `denylist` are present, the entry must be in `allowlist` and not in `denylist` to pass.
+- Namespacing is applied consistently at registration time and reflected in `GET /tools`.
 
 #### options.context (optional)
 
@@ -166,17 +256,51 @@ Creates an MCP server with dynamic/static tool management and Fastify HTTP trans
 
 - Arbitrary context passed to `moduleLoaders` during tool resolution.
 
+| Field     | Type      | Purpose                                                                                      | Example                                                        |
+| --------- | --------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `context` | `unknown` | Extra data/injectables available to every `ModuleLoader(context)` call when resolving tools. | `{ db, cache, apiClients }` used inside loaders to build tools |
+
+Notes
+
+- Only `moduleLoaders` receive `context`. Direct tools defined inline in `catalog` do not.
+- Not exposed to clients over HTTP; it stays in-process on the server.
+- Keep it lightweight and stable; prefer passing handles (e.g., db client) rather than huge data blobs.
+- STATIC mode: loaders are invoked at startup with the same `context`.
+- DYNAMIC mode: loaders are invoked at enable time with the same `context`.
+
+Example
+
+```ts
+const moduleLoaders = {
+  ext: async (ctx: any) => [
+    {
+      name: "echo",
+      description: "Echo using a backing service",
+      inputSchema: {
+        type: "object",
+        properties: { text: { type: "string" } },
+        required: ["text"],
+      },
+      handler: async ({ text }: { text: string }) => {
+        const result = await ctx.apiClients.echoService.send(text);
+        return { content: [{ type: "text", text: result }] } as any;
+      },
+    },
+  ],
+};
+```
+
 #### options.http (optional)
 
 `{ host?: string; port?: number; basePath?: string; cors?: boolean; logger?: boolean }`
 
 - Fastify transport configuration. Defaults: host `0.0.0.0`, port `3000`, basePath `/`, CORS enabled, logger disabled.
 
-#### options.mcp (optional)
+#### options.createServer (optional)
 
-`{ name?: string; version?: string; capabilities?: Record<string, unknown> }`
+`() => McpServer`
 
-- Overrides MCP server identity and capabilities; `tools.listChanged` is set automatically based on mode.
+Required factory to create the SDK server instance(s).
 
 #### options.configSchema (optional)
 

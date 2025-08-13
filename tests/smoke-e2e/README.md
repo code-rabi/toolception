@@ -8,6 +8,10 @@ This directory contains a runnable MCP server and client to smoke-test the HTTP/
   ```bash
   npm run dev:server-demo
   ```
+- Run in STATIC mode (preload ALL toolsets):
+  ```bash
+  STARTUP_MODE=STATIC TOOLSETS=ALL npm run dev:server-demo
+  ```
 - Or directly with tsx:
   ```bash
   npx --yes tsx tests/smoke-e2e/server-demo.ts

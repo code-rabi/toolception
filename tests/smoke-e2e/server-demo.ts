@@ -1,5 +1,6 @@
 // Run with: npx --yes tsx tests/smoke-e2e/server-demo.ts
 import { createMcpServer } from "../../src/server/createMcpServer.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ToolSetCatalog, ModuleLoader } from "../../src/types/index.js";
 import { z } from "zod";
 
@@ -36,12 +37,28 @@ const moduleLoaders: Record<string, ModuleLoader> = {
 
 const PORT = Number(process.env.PORT ?? 3003);
 
+// Provide SDK server instances externally
+const createServer = () =>
+  new McpServer({
+    name: "toolception-server-demo",
+    version: "0.1.0",
+    capabilities: { tools: { listChanged: true } },
+  });
+
+const STATIC = (process.env.STARTUP_MODE || "").toUpperCase() === "STATIC";
+
 const { start, close } = await createMcpServer({
   catalog,
   moduleLoaders,
-  startup: { mode: "DYNAMIC" },
+  startup: STATIC
+    ? {
+        mode: "STATIC",
+        toolsets:
+          (process.env.TOOLSETS as any) === "ALL" ? "ALL" : ["core", "ext"],
+      }
+    : { mode: "DYNAMIC" },
   http: { port: PORT },
-  mcp: { name: "toolception-server-demo", version: "0.1.0" },
+  createServer,
   configSchema: {
     $schema: "https://json-schema.org/draft/2020-12/schema",
     type: "object",

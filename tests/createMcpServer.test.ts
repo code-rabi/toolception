@@ -1,19 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Mock SDK McpServer to capture constructor args
-vi.mock("@modelcontextprotocol/sdk/server/mcp.js", () => {
-  return {
-    McpServer: class McpServerMock {
-      public static lastArgs: any;
-      public server: any = {};
-      constructor(args: any) {
-        (McpServerMock as any).lastArgs = args;
-      }
-      tool() {}
-      async connect() {}
-    },
-  };
-});
+// We no longer construct McpServer inside the library; provide a simple fake
 
 // Mock FastifyTransport to capture constructor args and avoid opening sockets
 vi.mock("../src/http/FastifyTransport.js", () => {
@@ -29,7 +16,6 @@ vi.mock("../src/http/FastifyTransport.js", () => {
   };
 });
 
-import { McpServer as McpServerMock } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { FastifyTransport as FastifyTransportMock } from "../src/http/FastifyTransport.js";
 import { createMcpServer } from "../src/server/createMcpServer.js";
 
@@ -37,20 +23,50 @@ const catalog = {
   core: { name: "Core", description: "", tools: [] },
 } as any;
 
+function makeFakeServer() {
+  const calls: string[] = [];
+  const server = {
+    tool: (name: string) => {
+      calls.push(name);
+    },
+  } as any;
+  return { server, calls };
+}
+
+function makeFakeServerFactory() {
+  const created: Array<{ server: any; calls: string[] }> = [];
+  const createServer = () => {
+    const s = makeFakeServer();
+    created.push(s);
+    return s.server;
+  };
+  return { createServer, created } as const;
+}
+
 describe("createMcpServer", () => {
   beforeEach(() => {
-    (McpServerMock as any).lastArgs = undefined;
     (FastifyTransportMock as any).lastArgs = undefined;
   });
 
-  it("sets listChanged true in dynamic mode, false in static mode", async () => {
-    await createMcpServer({ catalog, startup: { mode: "DYNAMIC" } });
-    const dyn = (McpServerMock as any).lastArgs;
-    expect(dyn.capabilities.tools.listChanged).toBe(true);
+  it("registers meta-tools by default in dynamic mode, not in static mode", async () => {
+    const d = makeFakeServerFactory();
+    await createMcpServer({
+      catalog,
+      startup: { mode: "DYNAMIC" },
+      createServer: d.createServer,
+    });
+    const baseDyn = d.created[0];
+    expect(baseDyn.calls.includes("list_tools")).toBe(true);
+    expect(baseDyn.calls.includes("list_toolsets")).toBe(true);
 
-    await createMcpServer({ catalog, startup: { mode: "STATIC" } });
-    const stat = (McpServerMock as any).lastArgs;
-    expect(stat.capabilities.tools.listChanged).toBe(false);
+    const s = makeFakeServerFactory();
+    await createMcpServer({
+      catalog,
+      startup: { mode: "STATIC" },
+      createServer: s.createServer,
+    });
+    const baseStat = s.created[0];
+    expect(baseStat.calls.length).toBe(0);
   });
 
   it("passes configSchema to FastifyTransport constructor", async () => {
@@ -58,13 +74,54 @@ describe("createMcpServer", () => {
       type: "object",
       properties: { FOO: { type: "string" } },
     };
+    const { createServer } = makeFakeServerFactory();
     await createMcpServer({
       catalog,
       startup: { mode: "DYNAMIC" },
+      createServer,
       configSchema,
     });
     const args = (FastifyTransportMock as any).lastArgs;
     // args: [manager, createBundle, httpOptions, configSchema]
     expect(args?.[3]).toEqual(configSchema);
+  });
+
+  it("reuses a single instance in STATIC mode bundles", async () => {
+    const f = makeFakeServerFactory();
+    await createMcpServer({
+      catalog,
+      startup: { mode: "STATIC" },
+      createServer: f.createServer,
+    });
+    const bundleFactory = (FastifyTransportMock as any).lastArgs?.[1];
+    const b1 = bundleFactory();
+    const b2 = bundleFactory();
+    expect(b1.server).toBe(b2.server);
+  });
+
+  it("creates a fresh instance per bundle in DYNAMIC mode", async () => {
+    const factory = makeFakeServerFactory();
+    await createMcpServer({
+      catalog,
+      startup: { mode: "DYNAMIC" },
+      createServer: factory.createServer,
+    });
+    // base server created immediately
+    expect(factory.created.length).toBe(1);
+    const base = factory.created[0];
+    expect(base.calls.includes("list_tools")).toBe(true);
+
+    // per-client bundle uses a fresh server
+    const bundleFactory = (FastifyTransportMock as any).lastArgs?.[1];
+    const b1 = bundleFactory();
+    const b2 = bundleFactory();
+    expect(factory.created.length).toBe(3);
+    const s1 = factory.created[1];
+    const s2 = factory.created[2];
+    expect(b1.server).toBe(s1.server);
+    expect(b2.server).toBe(s2.server);
+    expect(b1.server).not.toBe(b2.server);
+    expect(s1.calls.includes("list_tools")).toBe(true);
+    expect(s2.calls.includes("list_tools")).toBe(true);
   });
 });

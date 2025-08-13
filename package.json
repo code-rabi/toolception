@@ -1,6 +1,6 @@
 {
   "name": "toolception",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": false,
   "type": "module",
   "main": "dist/index.js",
@@ -18,6 +18,8 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "dev:server-demo": "tsx tests/smoke-e2e/server-demo.ts",
+    "dev:client-demo": "tsx tests/smoke-e2e/client-demo.ts",
     "prepublishOnly": "npm run typecheck && npm run build && npm run test:run"
   },
   "peerDependencies": {},

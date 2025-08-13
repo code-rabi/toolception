@@ -1,5 +1,5 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { ModeResolver } from "../mode/ModeResolver.js";
+import { ToolsetValidator } from "../mode/ToolsetValidator.js";
 import { ModuleResolver } from "../mode/ModuleResolver.js";
 import { DynamicToolManager } from "./DynamicToolManager.js";
 import { registerMetaTools } from "../meta/registerMetaTools.js";
@@ -21,14 +21,16 @@ export class ServerOrchestrator {
   private readonly mode: Exclude<Mode, "ALL">;
   private readonly resolver: ModuleResolver;
   private readonly manager: DynamicToolManager;
+  private readonly toolsetValidator: ToolsetValidator;
 
   constructor(options: ServerOrchestratorOptions) {
-    const modeResolver = new ModeResolver();
+    this.toolsetValidator = new ToolsetValidator();
     const startup = options.startup ?? {};
-    this.mode = startup.mode ?? "DYNAMIC";
+    const resolved = this.resolveStartupConfig(startup, options.catalog);
+    this.mode = resolved.mode;
     this.resolver = new ModuleResolver({
       catalog: options.catalog,
-      moduleLoaders: options.moduleLoaders as any,
+      moduleLoaders: options.moduleLoaders,
     });
     const toolRegistry = new ToolRegistry({
       namespaceWithToolset:
@@ -49,12 +51,65 @@ export class ServerOrchestrator {
     }
 
     // Startup behavior
-    const initial = startup.toolsets;
+    const initial = resolved.toolsets;
     if (initial === "ALL") {
       void this.manager.enableToolsets(this.resolver.getAvailableToolsets());
     } else if (Array.isArray(initial) && initial.length > 0) {
       void this.manager.enableToolsets(initial);
     }
+  }
+
+  private resolveStartupConfig(
+    startup: { mode?: Exclude<Mode, "ALL">; toolsets?: string[] | "ALL" },
+    catalog: ToolSetCatalog
+  ): { mode: Exclude<Mode, "ALL">; toolsets?: string[] | "ALL" } {
+    // Explicit mode dominates
+    if (startup.mode) {
+      if (startup.mode === "DYNAMIC" && startup.toolsets) {
+        console.warn("startup.toolsets provided but ignored in DYNAMIC mode");
+        return { mode: "DYNAMIC" };
+      }
+      if (startup.mode === "STATIC") {
+        if (startup.toolsets === "ALL")
+          return { mode: "STATIC", toolsets: "ALL" };
+        const names = Array.isArray(startup.toolsets) ? startup.toolsets : [];
+        const valid: string[] = [];
+        for (const name of names) {
+          const { isValid, sanitized, error } =
+            this.toolsetValidator.validateToolsetName(name, catalog);
+          if (isValid && sanitized) valid.push(sanitized);
+          else if (error) console.warn(error);
+        }
+        if (names.length > 0 && valid.length === 0) {
+          throw new Error(
+            "STATIC mode requires valid toolsets or 'ALL'; none were valid"
+          );
+        }
+        return { mode: "STATIC", toolsets: valid };
+      }
+      return { mode: startup.mode };
+    }
+
+    // No explicit mode; infer from toolsets
+    if (startup.toolsets === "ALL") return { mode: "STATIC", toolsets: "ALL" };
+    if (Array.isArray(startup.toolsets) && startup.toolsets.length > 0) {
+      const valid: string[] = [];
+      for (const name of startup.toolsets) {
+        const { isValid, sanitized, error } =
+          this.toolsetValidator.validateToolsetName(name, catalog);
+        if (isValid && sanitized) valid.push(sanitized);
+        else if (error) console.warn(error);
+      }
+      if (valid.length === 0) {
+        throw new Error(
+          "STATIC mode requires valid toolsets or 'ALL'; none were valid"
+        );
+      }
+      return { mode: "STATIC", toolsets: valid };
+    }
+
+    // Default
+    return { mode: "DYNAMIC" };
   }
 
   public getMode(): Exclude<Mode, "ALL"> {

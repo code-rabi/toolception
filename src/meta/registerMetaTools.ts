@@ -19,7 +19,7 @@ export function registerMetaTools(
       const result = await manager.enableToolset(name);
       return {
         content: [{ type: "text", text: JSON.stringify(result) }],
-      } as any;
+      };
     }
   );
 
@@ -32,7 +32,7 @@ export function registerMetaTools(
       const result = await manager.disableToolset(name);
       return {
         content: [{ type: "text", text: JSON.stringify(result) }],
-      } as any;
+      };
     }
   );
 
@@ -64,7 +64,7 @@ export function registerMetaTools(
           content: [
             { type: "text", text: JSON.stringify({ toolsets: items }) },
           ],
-        } as any;
+        };
       }
     );
 
@@ -84,7 +84,7 @@ export function registerMetaTools(
                 text: JSON.stringify({ error: `Unknown toolset '${name}'` }),
               },
             ],
-          } as any;
+          };
         }
         const payload = {
           key: name,
@@ -99,7 +99,7 @@ export function registerMetaTools(
         };
         return {
           content: [{ type: "text", text: JSON.stringify(payload) }],
-        } as any;
+        };
       }
     );
   }
@@ -116,7 +116,7 @@ export function registerMetaTools(
       };
       return {
         content: [{ type: "text", text: JSON.stringify(payload) }],
-      } as any;
+      };
     }
   );
 }

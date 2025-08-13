@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { ServerOrchestrator } from "../src/core/ServerOrchestrator.js";
 import { createFakeMcpServer } from "./helpers/fakes.js";
 
@@ -71,5 +71,34 @@ describe("ServerOrchestrator", () => {
     // Enable/disable are available in both modes
     expect(names).toContain("enable_toolset");
     expect(names).toContain("disable_toolset");
+  });
+
+  it("ignores toolsets in DYNAMIC mode with a warning", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { server, tools } = createFakeMcpServer();
+    new ServerOrchestrator({
+      server,
+      catalog: catalog as any,
+      startup: { mode: "DYNAMIC", toolsets: ["core", "ext"] },
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    const names = tools.map((t) => t.name);
+    expect(names).not.toContain("core.ping");
+    expect(names).not.toContain("ext.echo");
+    expect(warn).toHaveBeenCalledWith(
+      "startup.toolsets provided but ignored in DYNAMIC mode"
+    );
+    warn.mockRestore();
+  });
+
+  it("throws in STATIC mode when toolsets are invalid/empty", async () => {
+    expect(
+      () =>
+        new ServerOrchestrator({
+          server: createFakeMcpServer().server,
+          catalog: catalog as any,
+          startup: { toolsets: ["nope"], mode: "STATIC" },
+        })
+    ).toThrow(/STATIC mode requires valid toolsets or 'ALL'; none were valid/);
   });
 });
