@@ -155,8 +155,9 @@ Wires your MCP SDK server to dynamic/static tool management and a Fastify HTTP t
 
 Requirements
 
-- Either `server` or `createServer` must be provided.
-- In DYNAMIC mode, `createServer` is required (per-client isolation). Passing only `server` will throw.
+- `createServer` must be provided.
+- In DYNAMIC mode, a fresh server instance is created per client via `createServer`.
+- In STATIC mode, a single server instance is created once via `createServer` and reused for all clients.
 
 #### options.catalog (required)
 
@@ -170,11 +171,58 @@ Requirements
 
 - Maps module keys to async loaders returning `McpToolDefinition[]`. Referenced by toolsets via `modules: [key]`.
 
+Usage and behavior
+
+| Aspect           | Details                                                                                                                                                  |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key naming       | The object key is the module identifier referenced in `catalog[toolset].modules`. Example: `{ ext: async () => [...] }` and `modules: ["ext"]`.          |
+| Loader signature | `(context?: unknown) => Promise<McpToolDefinition[]>` or `McpToolDefinition[]`                                                                           |
+| When called      | STATIC mode: at startup (for specified toolsets or ALL). DYNAMIC mode: when a toolset is enabled via meta-tools.                                         |
+| Return value     | An array of tools to register. Tool names should be unique per toolset; if `namespaceToolsWithSetKey` is true, names are prefixed at registration.       |
+| Errors           | Throwing rejects the enable/preload flow for that toolset and surfaces an error to the caller.                                                           |
+| Idempotency      | Loaders may be invoked multiple times across runs/clients. Keep them deterministic/idempotent. Implement internal caching if they perform expensive I/O. |
+
+Example
+
+```ts
+const moduleLoaders = {
+  ext: async (ctx?: unknown) => [
+    {
+      name: "echo",
+      description: "Echo back provided text",
+      inputSchema: {
+        type: "object",
+        properties: { text: { type: "string" } },
+        required: ["text"],
+      },
+      handler: async ({ text }: { text: string }) => ({
+        content: [{ type: "text", text }],
+      }),
+    },
+  ],
+};
+
+const catalog = {
+  ext: { name: "Extensions", description: "Extra tools", modules: ["ext"] },
+};
+```
+
 #### options.startup (optional)
 
 `{ mode?: "DYNAMIC" | "STATIC"; toolsets?: string[] | "ALL" }`
 
 - Controls startup behavior. In STATIC mode, pre-load specific toolsets (or ALL). In DYNAMIC, register meta-tools and load on demand.
+
+Startup precedence and validation
+
+| Input                                                | Effective mode | Toolset handling                    | Outcome/Notes                                                                    |
+| ---------------------------------------------------- | -------------- | ----------------------------------- | -------------------------------------------------------------------------------- |
+| `startup.mode = "DYNAMIC"` (toolsets present or not) | DYNAMIC        | `startup.toolsets` is ignored       | Manage toolsets at runtime via meta-tools; logs a warning if `toolsets` provided |
+| `startup.mode = "STATIC"`, `toolsets = "ALL"`        | STATIC         | Preload all toolsets from `catalog` | OK                                                                               |
+| `startup.mode = "STATIC"`, `toolsets = [names]`      | STATIC         | Validate names against `catalog`    | Invalid names warn; if none valid remain → error                                 |
+| No `startup.mode`, `toolsets = "ALL"`                | STATIC         | Preload all toolsets                | OK                                                                               |
+| No `startup.mode`, `toolsets = [names]`              | STATIC         | Validate names against `catalog`    | Invalid names warn; if none valid remain → error                                 |
+| No `startup.mode`, no `toolsets`                     | DYNAMIC        | No preloads                         | Default behavior; manage toolsets at runtime via meta-tools                      |
 
 #### options.registerMetaTools (optional)
 
@@ -186,7 +234,21 @@ Requirements
 
 `ExposurePolicy`
 
-- Limits and namespacing for registered tools (e.g., `maxActiveToolsets`, `namespaceToolsWithSetKey`, `allowlist`/`denylist`).
+- Controls which toolsets can be activated and how tools are named when registered.
+
+| Field                      | Type                          | Purpose                                                                            | Example                                                              |
+| -------------------------- | ----------------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `maxActiveToolsets`        | `number`                      | Limit how many toolsets can be active at once. Prevents tool bloat.                | `{ maxActiveToolsets: 1 }` blocks enabling a second toolset          |
+| `namespaceToolsWithSetKey` | `boolean`                     | Prefix tool names with the toolset key when registering, to avoid name collisions. | With `true`, enabling `core` registers `core.ping` instead of `ping` |
+| `allowlist`                | `string[]`                    | Only these toolsets may be enabled. Others are denied.                             | `{ allowlist: ["core"] }` prevents enabling `ext`                    |
+| `denylist`                 | `string[]`                    | These toolsets cannot be enabled.                                                  | `{ denylist: ["ext"] }` blocks `ext`                                 |
+| `onLimitExceeded`          | `(attempted, active) => void` | Callback when `maxActiveToolsets` would be exceeded.                               | Log or telemetry hook                                                |
+
+Notes
+
+- Policy is enforced at enable time (via meta-tools or static preload).
+- If both `allowlist` and `denylist` are present, the entry must be in `allowlist` and not in `denylist` to pass.
+- Namespacing is applied consistently at registration time and reflected in `GET /tools`.
 
 #### options.context (optional)
 
@@ -194,50 +256,51 @@ Requirements
 
 - Arbitrary context passed to `moduleLoaders` during tool resolution.
 
+| Field     | Type      | Purpose                                                                                      | Example                                                        |
+| --------- | --------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `context` | `unknown` | Extra data/injectables available to every `ModuleLoader(context)` call when resolving tools. | `{ db, cache, apiClients }` used inside loaders to build tools |
+
+Notes
+
+- Only `moduleLoaders` receive `context`. Direct tools defined inline in `catalog` do not.
+- Not exposed to clients over HTTP; it stays in-process on the server.
+- Keep it lightweight and stable; prefer passing handles (e.g., db client) rather than huge data blobs.
+- STATIC mode: loaders are invoked at startup with the same `context`.
+- DYNAMIC mode: loaders are invoked at enable time with the same `context`.
+
+Example
+
+```ts
+const moduleLoaders = {
+  ext: async (ctx: any) => [
+    {
+      name: "echo",
+      description: "Echo using a backing service",
+      inputSchema: {
+        type: "object",
+        properties: { text: { type: "string" } },
+        required: ["text"],
+      },
+      handler: async ({ text }: { text: string }) => {
+        const result = await ctx.apiClients.echoService.send(text);
+        return { content: [{ type: "text", text: result }] } as any;
+      },
+    },
+  ],
+};
+```
+
 #### options.http (optional)
 
 `{ host?: string; port?: number; basePath?: string; cors?: boolean; logger?: boolean }`
 
 - Fastify transport configuration. Defaults: host `0.0.0.0`, port `3000`, basePath `/`, CORS enabled, logger disabled.
 
-#### options.server (optional)
-
-`McpServer`
-
-- A pre-created SDK server instance to use.
-
 #### options.createServer (optional)
 
 `() => McpServer`
 
-- Factory to create a fresh SDK server for each client bundle. If omitted, `options.server` is reused.
-
-<details>
-<summary><strong>Validation and diagnostics</strong></summary>
-
-![Error](https://img.shields.io/badge/Validation-Error-red) Required inputs
-
-- <strong>Error</strong>: neither `server` nor `createServer` provided.
-
-```text
-createMcpServer: either `server` or `createServer` must be provided
-```
-
-- <strong>Error</strong>: `startup.mode === "DYNAMIC"` without `createServer`.
-
-```text
-createMcpServer: in DYNAMIC mode `createServer` is required to create per-client server instances
-```
-
-![Warning](https://img.shields.io/badge/Validation-Warning-yellow)
-
-- <strong>Warning</strong>: both `server` and `createServer` provided. The base instance uses `server`; per-client bundles use `createServer`.
-
-```text
-[TOOLCEPTION_CREATE_MCP_SERVER_BOTH] Both `server` and `createServer` were provided. The base instance will use `server`, and per-client bundles will use `createServer`.
-```
-
-</details>
+Required factory to create the SDK server instance(s).
 
 #### options.configSchema (optional)
 

@@ -5,7 +5,6 @@ import {
   FastifyTransport,
   type FastifyTransportOptions,
 } from "../http/FastifyTransport.js";
-import { McpServerOptionsValidator } from "./validateOptions.js";
 
 export interface CreateMcpServerOptions {
   catalog: ToolSetCatalog;
@@ -15,24 +14,20 @@ export interface CreateMcpServerOptions {
   startup?: { mode?: Exclude<Mode, "ALL">; toolsets?: string[] | "ALL" };
   registerMetaTools?: boolean;
   http?: FastifyTransportOptions;
-  /**
-   * Provide an existing MCP server instance. If omitted, you must provide createServer.
-   * When provided together with createServer, this is used for the default (non-cached) manager,
-   * while createServer is used for per-client bundles.
+  /** Factory to create an MCP server instance. Required.
+   * In DYNAMIC mode, a new instance is created per client bundle.
+   * In STATIC mode, a single instance is created and reused across bundles.
    */
-  server?: McpServer;
-  /**
-   * Factory to create a fresh MCP server instance for each client bundle.
-   * If omitted, the provided `server` instance will be reused for all clients.
-   */
-  createServer?: () => McpServer;
+  createServer: () => McpServer;
   configSchema?: object;
 }
 
 export async function createMcpServer(options: CreateMcpServerOptions) {
   const mode: Exclude<Mode, "ALL"> = options.startup?.mode ?? "DYNAMIC";
-  McpServerOptionsValidator.validate(options);
-  const baseServer: McpServer = options.server ?? options.createServer!();
+  if (typeof options.createServer !== "function") {
+    throw new Error("createMcpServer: `createServer` (factory) is required");
+  }
+  const baseServer: McpServer = options.createServer();
 
   // Typed, guarded notifier
   type NotifierA = {
@@ -74,10 +69,10 @@ export async function createMcpServer(options: CreateMcpServerOptions) {
   const transport = new FastifyTransport(
     orchestrator.getManager(),
     () => {
-      // Create a fresh server + orchestrator bundle for a new client when needed
-      const createdServer: McpServer = options.createServer
-        ? options.createServer()
-        : baseServer;
+      // Create a server + orchestrator bundle
+      // for a new client when needed
+      const createdServer: McpServer =
+        mode === "DYNAMIC" ? options.createServer() : baseServer;
       const orchestrator = new ServerOrchestrator({
         server: createdServer,
         catalog: options.catalog,

@@ -1,20 +1,24 @@
 import type { Mode, ToolSetCatalog } from "../types/index.js";
 
-export interface ModeResolverKeys {
+interface ModeResolverKeys {
   dynamic?: string[]; // keys that, when present/true, enable dynamic mode
   toolsets?: string[]; // keys that carry comma-separated toolsets
 }
 
-export interface ModeResolverOptions {
+interface ModeResolverOptions {
   keys?: ModeResolverKeys;
 }
 
 const DEFAULT_KEYS: Required<ModeResolverKeys> = {
-  dynamic: ["dynamic-tool-discovery", "dynamicToolDiscovery", "DYNAMIC_TOOL_DISCOVERY"],
+  dynamic: [
+    "dynamic-tool-discovery",
+    "dynamicToolDiscovery",
+    "DYNAMIC_TOOL_DISCOVERY",
+  ],
   toolsets: ["tool-sets", "toolSets", "FMP_TOOL_SETS"],
 };
 
-export class ModeResolver {
+export class ToolsetValidator {
   private readonly keys: Required<ModeResolverKeys>;
 
   constructor(options: ModeResolverOptions = {}) {
@@ -24,7 +28,10 @@ export class ModeResolver {
     };
   }
 
-  public resolveMode(env?: Record<string, string | undefined>, args?: Record<string, unknown>): Mode | null {
+  public resolveMode(
+    env?: Record<string, string | undefined>,
+    args?: Record<string, unknown>
+  ): Mode | null {
     // Check args first
     if (this.isDynamicEnabled(args)) return "DYNAMIC";
 
@@ -40,7 +47,10 @@ export class ModeResolver {
     return null; // no override
   }
 
-  public parseCommaSeparatedToolSets(input: string, catalog: ToolSetCatalog): string[] {
+  public parseCommaSeparatedToolSets(
+    input: string,
+    catalog: ToolSetCatalog
+  ): string[] {
     if (!input || typeof input !== "string") return [];
     const raw = input
       .split(",")
@@ -51,12 +61,20 @@ export class ModeResolver {
     const result: string[] = [];
     for (const name of raw) {
       if (valid.has(name)) result.push(name);
-      else console.warn(`Invalid toolset '${name}' ignored. Available: ${Array.from(valid).join(", ")}`);
+      else
+        console.warn(
+          `Invalid toolset '${name}' ignored. Available: ${Array.from(
+            valid
+          ).join(", ")}`
+        );
     }
     return result;
   }
 
-  public getModulesForToolSets(toolsets: string[], catalog: ToolSetCatalog): string[] {
+  public getModulesForToolSets(
+    toolsets: string[],
+    catalog: ToolSetCatalog
+  ): string[] {
     const modules = new Set<string>();
     for (const name of toolsets) {
       const def = catalog[name];
@@ -66,33 +84,64 @@ export class ModeResolver {
     return Array.from(modules);
   }
 
-  public validateToolsetName(name: unknown, catalog: ToolSetCatalog): { isValid: boolean; sanitized?: string; error?: string } {
+  public validateToolsetName(
+    name: unknown,
+    catalog: ToolSetCatalog
+  ): { isValid: boolean; sanitized?: string; error?: string } {
     if (!name || typeof name !== "string") {
-      return { isValid: false, error: `Invalid toolset name provided. Must be a non-empty string. Available toolsets: ${Object.keys(catalog).join(", ")}` };
+      return {
+        isValid: false,
+        error: `Invalid toolset name provided. Must be a non-empty string. Available toolsets: ${Object.keys(
+          catalog
+        ).join(", ")}`,
+      };
     }
     const sanitized = name.trim();
     if (sanitized.length === 0) {
-      return { isValid: false, error: `Empty toolset name provided. Available toolsets: ${Object.keys(catalog).join(", ")}` };
+      return {
+        isValid: false,
+        error: `Empty toolset name provided. Available toolsets: ${Object.keys(
+          catalog
+        ).join(", ")}`,
+      };
     }
     if (!catalog[sanitized]) {
-      return { isValid: false, error: `Toolset '${sanitized}' not found. Available toolsets: ${Object.keys(catalog).join(", ")}` };
+      return {
+        isValid: false,
+        error: `Toolset '${sanitized}' not found. Available toolsets: ${Object.keys(
+          catalog
+        ).join(", ")}`,
+      };
     }
     return { isValid: true, sanitized };
   }
 
-  public validateToolsetModules(toolsetNames: string[], catalog: ToolSetCatalog): { isValid: boolean; modules?: string[]; error?: string } {
+  public validateToolsetModules(
+    toolsetNames: string[],
+    catalog: ToolSetCatalog
+  ): { isValid: boolean; modules?: string[]; error?: string } {
     try {
       const modules = this.getModulesForToolSets(toolsetNames, catalog);
       if (!modules || modules.length === 0) {
-        return { isValid: false, error: `No modules found for toolsets: ${toolsetNames.join(", ")}` };
+        return {
+          isValid: false,
+          error: `No modules found for toolsets: ${toolsetNames.join(", ")}`,
+        };
       }
       return { isValid: true, modules };
     } catch (error) {
-      return { isValid: false, error: `Error resolving modules for ${toolsetNames.join(", ")}: ${error instanceof Error ? error.message : "Unknown error"}` };
+      return {
+        isValid: false,
+        error: `Error resolving modules for ${toolsetNames.join(", ")}: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
+      };
     }
   }
 
-  private isDynamicEnabled(source?: Record<string, unknown> | Record<string, string | undefined>): boolean {
+  private isDynamicEnabled(
+    source?: Record<string, unknown> | Record<string, string | undefined>
+  ): boolean {
     if (!source) return false;
     for (const key of this.keys.dynamic) {
       const value = (source as any)[key];
@@ -105,13 +154,15 @@ export class ModeResolver {
     return false;
   }
 
-  private getToolsetsString(source?: Record<string, unknown> | Record<string, string | undefined>): string | undefined {
+  private getToolsetsString(
+    source?: Record<string, unknown> | Record<string, string | undefined>
+  ): string | undefined {
     if (!source) return undefined;
     for (const key of this.keys.toolsets) {
       const value = (source as any)[key];
-      if (typeof value === "string" && value.trim().length > 0) return value as string;
+      if (typeof value === "string" && value.trim().length > 0)
+        return value as string;
     }
     return undefined;
   }
 }
-

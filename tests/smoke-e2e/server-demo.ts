@@ -45,10 +45,18 @@ const createServer = () =>
     capabilities: { tools: { listChanged: true } },
   });
 
+const STATIC = (process.env.STARTUP_MODE || "").toUpperCase() === "STATIC";
+
 const { start, close } = await createMcpServer({
   catalog,
   moduleLoaders,
-  startup: { mode: "DYNAMIC" },
+  startup: STATIC
+    ? {
+        mode: "STATIC",
+        toolsets:
+          (process.env.TOOLSETS as any) === "ALL" ? "ALL" : ["core", "ext"],
+      }
+    : { mode: "DYNAMIC" },
   http: { port: PORT },
   createServer,
   configSchema: {
