@@ -75,14 +75,25 @@ const configSchema = {
 } as const;
 ```
 
-### Step 7: Create and start the MCP server
+### Step 7: Create the MCP SDK server and start Toolception
 
 ```ts
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+
+// You own the SDK server; pass a factory into Toolception (required in DYNAMIC mode)
+const createServer = () =>
+  new McpServer({
+    name: "my-mcp-server",
+    version: "0.0.0",
+    capabilities: { tools: { listChanged: true } },
+  });
+
 const { start, close } = await createMcpServer({
   catalog,
   moduleLoaders,
   startup: { mode: "DYNAMIC" },
   http: { port: 3000 },
+  createServer,
   // configSchema, // uncomment to expose at /.well-known/mcp-config
 });
 await start();
@@ -103,9 +114,11 @@ process.on("SIGTERM", async () => {
 
 ## Static startup
 
-Enable some or ALL toolsets at bootstrap:
+Enable some or ALL toolsets at bootstrap. Note: provide a server or factory:
 
 ```ts
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+
 const staticCatalog = {
   search: { name: "Search", description: "Search tools", modules: ["search"] },
   quotes: { name: "Quotes", description: "Market quotes", modules: ["quotes"] },
@@ -115,12 +128,22 @@ createMcpServer({
   catalog: staticCatalog,
   startup: { mode: "STATIC", toolsets: ["search", "quotes"] },
   http: { port: 3001 },
+  server: new McpServer({
+    name: "static-1",
+    version: "0.0.0",
+    capabilities: { tools: { listChanged: false } },
+  }),
 });
 
 createMcpServer({
   catalog: staticCatalog,
   startup: { mode: "STATIC", toolsets: "ALL" },
   http: { port: 3002 },
+  server: new McpServer({
+    name: "static-2",
+    version: "0.0.0",
+    capabilities: { tools: { listChanged: false } },
+  }),
 });
 ```
 
@@ -128,7 +151,12 @@ createMcpServer({
 
 ### createMcpServer(options)
 
-Creates an MCP server with dynamic/static tool management and Fastify HTTP transport.
+Wires your MCP SDK server to dynamic/static tool management and a Fastify HTTP transport.
+
+Requirements
+
+- Either `server` or `createServer` must be provided.
+- In DYNAMIC mode, `createServer` is required (per-client isolation). Passing only `server` will throw.
 
 #### options.catalog (required)
 
@@ -172,11 +200,44 @@ Creates an MCP server with dynamic/static tool management and Fastify HTTP trans
 
 - Fastify transport configuration. Defaults: host `0.0.0.0`, port `3000`, basePath `/`, CORS enabled, logger disabled.
 
-#### options.mcp (optional)
+#### options.server (optional)
 
-`{ name?: string; version?: string; capabilities?: Record<string, unknown> }`
+`McpServer`
 
-- Overrides MCP server identity and capabilities; `tools.listChanged` is set automatically based on mode.
+- A pre-created SDK server instance to use.
+
+#### options.createServer (optional)
+
+`() => McpServer`
+
+- Factory to create a fresh SDK server for each client bundle. If omitted, `options.server` is reused.
+
+<details>
+<summary><strong>Validation and diagnostics</strong></summary>
+
+![Error](https://img.shields.io/badge/Validation-Error-red) Required inputs
+
+- <strong>Error</strong>: neither `server` nor `createServer` provided.
+
+```text
+createMcpServer: either `server` or `createServer` must be provided
+```
+
+- <strong>Error</strong>: `startup.mode === "DYNAMIC"` without `createServer`.
+
+```text
+createMcpServer: in DYNAMIC mode `createServer` is required to create per-client server instances
+```
+
+![Warning](https://img.shields.io/badge/Validation-Warning-yellow)
+
+- <strong>Warning</strong>: both `server` and `createServer` provided. The base instance uses `server`; per-client bundles use `createServer`.
+
+```text
+[TOOLCEPTION_CREATE_MCP_SERVER_BOTH] Both `server` and `createServer` were provided. The base instance will use `server`, and per-client bundles will use `createServer`.
+```
+
+</details>
 
 #### options.configSchema (optional)
 

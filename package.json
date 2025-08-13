@@ -18,6 +18,8 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "dev:server-demo": "tsx tests/smoke-e2e/server-demo.ts",
+    "dev:client-demo": "tsx tests/smoke-e2e/client-demo.ts",
     "prepublishOnly": "npm run typecheck && npm run build && npm run test:run"
   },
   "peerDependencies": {},
