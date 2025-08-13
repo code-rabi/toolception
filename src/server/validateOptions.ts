@@ -18,7 +18,6 @@ export class McpServerOptionsValidator {
     }
 
     if (input.server && input.createServer) {
-      // eslint-disable-next-line no-console
       if (typeof process.emitWarning === "function") {
         process.emitWarning(
           "Both `server` and `createServer` were provided. The base instance will use `server`, and per-client bundles will use `createServer`.",
