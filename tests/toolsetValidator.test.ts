@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ToolsetValidator } from "../src/mode/ModeResolver.js";
+import { ToolsetValidator } from "../src/mode/ToolsetValidator.js";
 
 describe("ToolsetValidator", () => {
   it("detects dynamic from args/env", () => {

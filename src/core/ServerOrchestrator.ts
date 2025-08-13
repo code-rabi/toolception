@@ -1,5 +1,5 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { ToolsetValidator } from "../mode/ModeResolver.js";
+import { ToolsetValidator } from "../mode/ToolsetValidator.js";
 import { ModuleResolver } from "../mode/ModuleResolver.js";
 import { DynamicToolManager } from "./DynamicToolManager.js";
 import { registerMetaTools } from "../meta/registerMetaTools.js";
