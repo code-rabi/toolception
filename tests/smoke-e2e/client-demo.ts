@@ -1,5 +1,3 @@
-// Run with: npm run dev:server-demo (in one terminal)
-//           npm run dev:client-demo (in another terminal)
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 
