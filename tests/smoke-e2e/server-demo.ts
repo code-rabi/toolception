@@ -1,4 +1,3 @@
-// Run with: npx --yes tsx tests/smoke-e2e/server-demo.ts
 import { createMcpServer } from "../../src/server/createMcpServer.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ToolSetCatalog, ModuleLoader } from "../../src/types/index.js";

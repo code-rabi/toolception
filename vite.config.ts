@@ -1,7 +1,18 @@
 import { defineConfig } from "vite";
+import dts from "vite-plugin-dts";
 import path from "node:path";
 
 export default defineConfig({
+  plugins: [
+    dts({
+      entryRoot: "src",
+      outDir: "dist",
+      tsconfigPath: "tsconfig.json",
+      // Ensure we emit types for published surface only; still okay to include all for now
+      // but we can later refine with rollup types filtering.
+      insertTypesEntry: true,
+    }),
+  ],
   build: {
     lib: {
       entry: path.resolve(__dirname, "src/index.ts"),
