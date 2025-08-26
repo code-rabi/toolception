@@ -71,9 +71,12 @@ export async function createMcpServer(options: CreateMcpServerOptions) {
     () => {
       // Create a server + orchestrator bundle
       // for a new client when needed
-      const createdServer: McpServer =
-        mode === "DYNAMIC" ? options.createServer() : baseServer;
-      const orchestrator = new ServerOrchestrator({
+      if (mode === "STATIC") {
+        // Reuse the base server and orchestrator to avoid duplicate registrations
+        return { server: baseServer, orchestrator };
+      }
+      const createdServer: McpServer = options.createServer();
+      const createdOrchestrator = new ServerOrchestrator({
         server: createdServer,
         catalog: options.catalog,
         moduleLoaders: options.moduleLoaders,
@@ -86,7 +89,7 @@ export async function createMcpServer(options: CreateMcpServerOptions) {
             ? options.registerMetaTools
             : mode === "DYNAMIC",
       });
-      return { server: createdServer, orchestrator };
+      return { server: createdServer, orchestrator: createdOrchestrator };
     },
     options.http,
     options.configSchema

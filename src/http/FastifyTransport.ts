@@ -114,10 +114,12 @@ export class FastifyTransport {
         let bundle = useCache ? this.clientCache.get(clientId) : null;
         if (!bundle) {
           const created = this.createBundle();
+          const providedSessions = (created as any).sessions;
           bundle = {
             server: created.server,
             orchestrator: created.orchestrator,
-            sessions: new Map(),
+            sessions:
+              providedSessions instanceof Map ? providedSessions : new Map(),
           };
           if (useCache) this.clientCache.set(clientId, bundle);
         }
@@ -229,6 +231,17 @@ export class FastifyTransport {
             error: { code: -32000, message: "Session not found or expired" },
             id: null,
           };
+        }
+        try {
+          // Best-effort close and evict
+          if (typeof (transport as any).close === "function") {
+            try {
+              await (transport as any).close();
+            } catch {}
+          }
+        } finally {
+          if (transport?.sessionId) bundle.sessions.delete(transport.sessionId);
+          else bundle.sessions.delete(sessionId);
         }
         reply.code(204).send();
         return reply;

@@ -124,4 +124,40 @@ describe("createMcpServer", () => {
     expect(s1.calls.includes("list_tools")).toBe(true);
     expect(s2.calls.includes("list_tools")).toBe(true);
   });
+
+  it("does not re-register tools in STATIC mode across multiple clients", async () => {
+    const f = makeFakeServerFactory();
+    const staticCatalog = {
+      core: {
+        name: "Core",
+        description: "",
+        tools: [
+          {
+            name: "ping",
+            description: "",
+            inputSchema: {},
+            handler: async () => ({ content: [{ type: "text", text: "pong" }] }),
+          },
+        ],
+      },
+    } as any;
+
+    await createMcpServer({
+      catalog: staticCatalog,
+      startup: { mode: "STATIC", toolsets: ["core"] },
+      createServer: f.createServer,
+    });
+
+    const base = f.created[0];
+    // One registration at startup, namespaced by toolset key
+    expect(base.calls.filter((n) => n === "core.ping").length).toBe(1);
+
+    const bundleFactory = (FastifyTransportMock as any).lastArgs?.[1];
+    // Simulate two more clients (bundles)
+    bundleFactory();
+    bundleFactory();
+
+    // No additional registrations should have occurred on the shared server
+    expect(base.calls.filter((n) => n === "core.ping").length).toBe(1);
+  });
 });
