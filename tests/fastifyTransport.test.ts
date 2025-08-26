@@ -41,4 +41,61 @@ describe("FastifyTransport", () => {
 
     await transport.stop();
   });
+
+  it("DELETE /mcp evicts session after close", async () => {
+    // Fake server that supports connect()
+    const server: any = {
+      async connect(_t: any) {
+        // no-op
+      },
+    };
+    const resolver = new ModuleResolver({
+      catalog: { core: { name: "Core", description: "", tools: [] } } as any,
+    });
+    const manager = new DynamicToolManager({ server, resolver });
+
+    const app = Fastify({ logger: false });
+    // Stub createBundle with a minimal streamable transport-like object
+    const sessions = new Map<string, any>();
+    const bundle = { server, orchestrator: {} as any, sessions } as any;
+
+    const transport = new FastifyTransport(
+      manager,
+      () => bundle,
+      { port: 0, logger: false, app }
+    );
+    await transport.start();
+
+    const clientId = "c1";
+    // Seed bundle in cache with a non-initialize POST (will 400 but caches bundle)
+    await app.inject({
+      method: "POST",
+      url: "/mcp",
+      headers: { "mcp-client-id": clientId },
+      payload: { jsonrpc: "2.0", id: 1, method: "unknown", params: {} },
+    });
+
+    // Now create a fake session inside the cached bundle
+    const createdSessionId = "s-1";
+    const storedTransport: any = {
+      sessionId: createdSessionId,
+      async handleRequest() {},
+      async close() {
+        this._closed = true;
+      },
+    };
+    sessions.set(createdSessionId, storedTransport);
+
+    // Attempt DELETE
+    const res = await app.inject({
+      method: "DELETE",
+      url: "/mcp",
+      headers: { "mcp-client-id": clientId, "mcp-session-id": createdSessionId },
+    });
+    expect(res.statusCode).toBe(204);
+    expect(storedTransport._closed).toBe(true);
+    expect(sessions.has(createdSessionId)).toBe(false);
+
+    await transport.stop();
+  });
 });
