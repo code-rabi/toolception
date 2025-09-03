@@ -5,6 +5,7 @@
 
 ## Table of Contents
 
+- [When and why to use Toolception](#when-and-why-to-use-toolception)
 - [Starter guide](#starter-guide)
 - [Static startup](#static-startup)
 - [API](#api)
@@ -13,6 +14,49 @@
 - [Tool types](#tool-types)
 - [Startup modes](#startup-modes)
 - [License](#license)
+
+## When and why to use Toolception
+
+Building MCP servers with dozens or hundreds of tools often harms LLM performance and developer experience:
+- **Too many tools overwhelm selection**: Larger tool lists increase confusion and mis-selection rates.
+- **Token and schema bloat**: Long tool catalogs inflate prompts and latency.
+- **Name collisions and ambiguity**: Similar tool names across domains cause failures and fragile integrations.
+- **Operational overhead**: Loading every tool up-front wastes resources; many tools are task-specific.
+
+Toolception addresses this by grouping tools into toolsets and letting you expose only what’s needed, when it’s needed.
+
+### When to use Toolception
+- **Large or multi-domain catalogs**: You have >20–50 tools or multiple domains (e.g., search, data, billing) and don’t want to expose them all at once.
+- **Task-specific workflows**: You want the client/agent to enable only the tools relevant to the current task.
+- **Multi-tenant or policy needs**: Different users/tenants require different tool access or limits.
+- **Collision-safe naming**: You need predictable, namespaced tool names to avoid conflicts.
+- **Lazy loading**: Some tools are heavy and should be loaded on demand.
+
+### Why Toolception helps
+- **Toolsets**: Group related tools and expose minimal, coherent subsets per task.
+- **Dynamic mode (runtime control)**:
+  - Enable toolsets on demand via meta-tools (`enable_toolset`, `disable_toolset`, `list_toolsets`, `describe_toolset`, `list_tools`).
+  - Reduce prompt/tool surface area → better tool selection and lower latency.
+  - Lazy-load module-produced tools only when needed; pass shared `context` safely to loaders.
+  - Supports `tools.listChanged` notifications so clients can react to updated tool lists.
+- **Static mode (predictable startup)**:
+  - Preload known toolsets (or ALL) at startup for fixed pipelines and simpler environments.
+  - Keep only the required sets for your deployment footprint.
+- **Exposure policy**:
+  - **maxActiveToolsets**: Cap concurrently active sets to prevent bloat.
+  - **allowlist/denylist**: Enforce which toolsets can be enabled.
+  - **namespaceToolsWithSetKey**: Default on; registers tools as `set.tool` to avoid collisions and clarify intent.
+- **Operational safety**:
+  - Central `ToolRegistry` validates names and prevents collisions.
+  - `ModuleLoaders` are deterministic/idempotent for repeatable runs and caching.
+
+### Choosing a mode
+- **Prefer DYNAMIC** when tool needs vary by task, you want tighter prompts, or you need runtime gating and lazy loading.
+- **Choose STATIC** when your tool needs are stable and small, or when your client cannot (or should not) perform runtime enable/disable operations.
+
+### Typical flows
+- **Discovery-first (dynamic)**: Client calls `list_toolsets` → enables a set → calls namespaced tools (e.g., `core.ping`).
+- **Fixed pipeline (static)**: Server preloads named toolsets (or ALL) at startup; clients call `list_tools` and invoke as usual.
 
 ## Starter guide
 
