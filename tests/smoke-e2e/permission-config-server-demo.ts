@@ -99,28 +99,32 @@ const staticPermissionMap: Record<string, string[]> = {
 
 /**
  * Resolver function for dynamic permission logic.
- * This is called when a client is not found in the static map.
+ * This is called FIRST, before checking the static map.
+ * Return a valid array to use those permissions, or throw an error to fall back to static map.
  * 
  * @param clientId - The client identifier
- * @returns Array of allowed toolset names
+ * @returns Array of allowed toolset names, or throws to trigger fallback
  */
 const permissionResolver = (clientId: string): string[] => {
   console.log(`Resolver called for client: ${clientId}`);
 
   // Example: Grant permissions based on client ID patterns
   if (clientId.startsWith("admin-")) {
+    console.log(`Matched admin-* pattern`);
     return ["admin", "user", "analytics"];
   }
   if (clientId.startsWith("analyst-")) {
+    console.log(`Matched analyst-* pattern`);
     return ["user", "analytics"];
   }
   if (clientId.startsWith("user-")) {
+    console.log(`Matched user-* pattern`);
     return ["user"];
   }
 
-  // Unknown pattern - will fall back to default permissions
-  console.log(`No pattern match for ${clientId}, using default permissions`);
-  return [];
+  // No pattern match - throw error to fall back to static map or default permissions
+  console.log(`No pattern match for ${clientId}, falling back to static map`);
+  throw new Error(`No resolver pattern match for ${clientId}`);
 };
 
 const { start, close } = await createPermissionBasedMcpServer({

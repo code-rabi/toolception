@@ -146,9 +146,10 @@ export class PermissionResolver {
       );
       return null;
     } catch (error) {
+      // Log message only, not full stack trace (this is expected fallback behavior)
+      const message = error instanceof Error ? error.message : String(error);
       console.warn(
-        `Permission resolver failed for client ${clientId}:`,
-        error
+        `Permission resolver declined client ${clientId} (${message}), trying fallback`
       );
       return null;
     }
