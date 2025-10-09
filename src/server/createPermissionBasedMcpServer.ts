@@ -1,10 +1,10 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CreatePermissionBasedMcpServerOptions } from "../types/index.js";
-import { validatePermissionConfig } from "./validatePermissionConfig.js";
-import { PermissionResolver } from "./PermissionResolver.js";
+import { validatePermissionConfig } from "../permissions/validatePermissionConfig.js";
+import { PermissionResolver } from "../permissions/PermissionResolver.js";
 import { ServerOrchestrator } from "../core/ServerOrchestrator.js";
-import { createPermissionAwareBundle } from "./createPermissionAwareBundle.js";
-import { PermissionAwareFastifyTransport } from "./PermissionAwareFastifyTransport.js";
+import { createPermissionAwareBundle } from "../permissions/createPermissionAwareBundle.js";
+import { PermissionAwareFastifyTransport } from "../permissions/PermissionAwareFastifyTransport.js";
 
 /**
  * Creates an MCP server with permission-based toolset access control.

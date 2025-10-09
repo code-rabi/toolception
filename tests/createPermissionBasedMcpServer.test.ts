@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { createPermissionBasedMcpServer } from "../src/permissions/createPermissionBasedMcpServer.js";
+import { createPermissionBasedMcpServer } from "../src/server/createPermissionBasedMcpServer.js";
 import type { CreatePermissionBasedMcpServerOptions } from "../src/types/index.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
