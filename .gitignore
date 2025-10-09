@@ -28,6 +28,7 @@ Thumbs.db
 # Editors/IDE
 .vscode/
 .idea/
+.kiro/
 
 # Misc
 *.map

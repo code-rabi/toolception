@@ -8,7 +8,14 @@
 - [When and why to use Toolception](#when-and-why-to-use-toolception)
 - [Starter guide](#starter-guide)
 - [Static startup](#static-startup)
+- [Permission-based starter guide](#permission-based-starter-guide)
+- [Permission configuration approaches](#permission-configuration-approaches)
 - [API](#api)
+  - [createMcpServer](#createmcpserveroptions)
+  - [createPermissionBasedMcpServer](#createpermissionbasedmcpserveroptions)
+- [Permission-based client integration](#permission-based-client-integration)
+- [Permission-based security best practices](#permission-based-security-best-practices)
+- [Permission-based common patterns](#permission-based-common-patterns)
 - [Client ID lifecycle](#client-id-lifecycle)
 - [Session ID lifecycle](#session-id-lifecycle)
 - [Tool types](#tool-types)
@@ -18,6 +25,7 @@
 ## When and why to use Toolception
 
 Building MCP servers with dozens or hundreds of tools often harms LLM performance and developer experience:
+
 - **Too many tools overwhelm selection**: Larger tool lists increase confusion and mis-selection rates.
 - **Token and schema bloat**: Long tool catalogs inflate prompts and latency.
 - **Name collisions and ambiguity**: Similar tool names across domains cause failures and fragile integrations.
@@ -26,13 +34,16 @@ Building MCP servers with dozens or hundreds of tools often harms LLM performanc
 Toolception addresses this by grouping tools into toolsets and letting you expose only what’s needed, when it’s needed.
 
 ### When to use Toolception
+
 - **Large or multi-domain catalogs**: You have >20–50 tools or multiple domains (e.g., search, data, billing) and don’t want to expose them all at once.
 - **Task-specific workflows**: You want the client/agent to enable only the tools relevant to the current task.
 - **Multi-tenant or policy needs**: Different users/tenants require different tool access or limits.
+- **Permission-based access control**: You need to enforce client-specific toolset permissions for security, compliance, or multi-tenant isolation. Each client should only see and access the toolsets they're authorized to use, with server-side or header-based permission enforcement.
 - **Collision-safe naming**: You need predictable, namespaced tool names to avoid conflicts.
 - **Lazy loading**: Some tools are heavy and should be loaded on demand.
 
 ### Why Toolception helps
+
 - **Toolsets**: Group related tools and expose minimal, coherent subsets per task.
 - **Dynamic mode (runtime control)**:
   - Enable toolsets on demand via meta-tools (`enable_toolset`, `disable_toolset`, `list_toolsets`, `describe_toolset`, `list_tools`).
@@ -51,10 +62,12 @@ Toolception addresses this by grouping tools into toolsets and letting you expos
   - `ModuleLoaders` are deterministic/idempotent for repeatable runs and caching.
 
 ### Choosing a mode
+
 - **Prefer DYNAMIC** when tool needs vary by task, you want tighter prompts, or you need runtime gating and lazy loading.
 - **Choose STATIC** when your tool needs are stable and small, or when your client cannot (or should not) perform runtime enable/disable operations.
 
 ### Typical flows
+
 - **Discovery-first (dynamic)**: Client calls `list_toolsets` → enables a set → calls namespaced tools (e.g., `core.ping`).
 - **Fixed pipeline (static)**: Server preloads named toolsets (or ALL) at startup; clients call `list_tools` and invoke as usual.
 
@@ -190,6 +203,387 @@ createMcpServer({
   }),
 });
 ```
+
+## Permission-based starter guide
+
+Use `createPermissionBasedMcpServer` when you need to enforce client-specific toolset permissions. This is ideal for multi-tenant applications, security-sensitive environments, or when different clients should have different levels of access.
+
+### Step 1: Install
+
+```bash
+npm i toolception
+```
+
+### Step 2: Import Toolception
+
+```ts
+import { createPermissionBasedMcpServer } from "toolception";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+```
+
+### Step 3: Define a toolset catalog
+
+```ts
+const catalog = {
+  admin: {
+    name: "Admin Tools",
+    description: "Administrative operations",
+    modules: ["admin"],
+  },
+  user: {
+    name: "User Tools",
+    description: "Standard user operations",
+    modules: ["user"],
+  },
+};
+```
+
+### Step 4: Define tools
+
+```ts
+const adminTool = {
+  name: "delete_user",
+  description: "Delete a user account",
+  inputSchema: {
+    type: "object",
+    properties: {
+      userId: { type: "string", description: "User ID to delete" },
+    },
+    required: ["userId"],
+  },
+  handler: async ({ userId }: { userId: string }) => ({
+    content: [{ type: "text", text: `User ${userId} deleted` }],
+  }),
+} as const;
+
+const userTool = {
+  name: "get_profile",
+  description: "Get user profile information",
+  inputSchema: {
+    type: "object",
+    properties: {
+      userId: { type: "string", description: "User ID" },
+    },
+    required: ["userId"],
+  },
+  handler: async ({ userId }: { userId: string }) => ({
+    content: [{ type: "text", text: `Profile for ${userId}: {...}` }],
+  }),
+} as const;
+```
+
+### Step 5: Provide module loaders
+
+```ts
+const moduleLoaders = {
+  admin: async () => [adminTool],
+  user: async () => [userTool],
+};
+```
+
+### Step 6: Choose permission approach
+
+You have two options for managing permissions:
+
+**Header-Based Permissions:**
+
+- Use when you have an authentication gateway/proxy
+- Permissions passed via HTTP headers
+- Good for dynamic, frequently-changing permissions
+- Requires external validation of headers
+
+**Config-Based Permissions:**
+
+- Use when you want server-side control
+- Permissions defined in server configuration
+- Better security (no client-provided permission data)
+- Good for stable permission structures
+
+### Step 7: Create the permission-based MCP server
+
+**Option A: Header-Based Permissions**
+
+```ts
+const createServer = () =>
+  new McpServer({
+    name: "permission-header-server",
+    version: "1.0.0",
+    capabilities: { tools: { listChanged: false } },
+  });
+
+const { start, close } = await createPermissionBasedMcpServer({
+  catalog,
+  moduleLoaders,
+  permissions: {
+    source: "headers",
+    headerName: "mcp-toolset-permissions", // optional, this is default
+  },
+  http: { port: 3000 },
+  createServer,
+});
+
+await start();
+```
+
+**Option B: Config-Based Permissions (Static Map)**
+
+```ts
+const createServer = () =>
+  new McpServer({
+    name: "permission-config-server",
+    version: "1.0.0",
+    capabilities: { tools: { listChanged: false } },
+  });
+
+const { start, close } = await createPermissionBasedMcpServer({
+  catalog,
+  moduleLoaders,
+  permissions: {
+    source: "config",
+    staticMap: {
+      "admin-client-id": ["admin", "user"],
+      "user-client-id": ["user"],
+    },
+    defaultPermissions: [], // unknown clients get no toolsets
+  },
+  http: { port: 3000 },
+  createServer,
+});
+
+await start();
+```
+
+**Option C: Config-Based Permissions (Resolver Function)**
+
+```ts
+const createServer = () =>
+  new McpServer({
+    name: "permission-resolver-server",
+    version: "1.0.0",
+    capabilities: { tools: { listChanged: false } },
+  });
+
+const { start, close } = await createPermissionBasedMcpServer({
+  catalog,
+  moduleLoaders,
+  permissions: {
+    source: "config",
+    resolver: (clientId: string) => {
+      // Your custom permission logic
+      if (clientId.startsWith("admin-")) {
+        return ["admin", "user"];
+      }
+      if (clientId.startsWith("user-")) {
+        return ["user"];
+      }
+      return [];
+    },
+    defaultPermissions: [],
+  },
+  http: { port: 3000 },
+  createServer,
+});
+
+await start();
+```
+
+### Step 8: Graceful shutdown
+
+```ts
+process.on("SIGINT", async () => {
+  await close();
+  process.exit(0);
+});
+
+process.on("SIGTERM", async () => {
+  await close();
+  process.exit(0);
+});
+```
+
+## Permission configuration approaches
+
+### Header-Based Permissions Setup
+
+Use header-based permissions when you have an authentication gateway or proxy that validates and sets permission headers. This approach is flexible for dynamic permissions but requires external header validation.
+
+```ts
+import { createPermissionBasedMcpServer } from "toolception";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+
+const createServer = () =>
+  new McpServer({
+    name: "permission-header-server",
+    version: "1.0.0",
+    capabilities: { tools: { listChanged: false } },
+  });
+
+const { start, close } = await createPermissionBasedMcpServer({
+  catalog: {
+    admin: {
+      name: "Admin",
+      description: "Admin tools",
+      modules: ["admin"],
+    },
+    user: {
+      name: "User",
+      description: "User tools",
+      modules: ["user"],
+    },
+  },
+  moduleLoaders: {
+    admin: async () => [
+      /* admin tools */
+    ],
+    user: async () => [
+      /* user tools */
+    ],
+  },
+  permissions: {
+    source: "headers",
+    headerName: "mcp-toolset-permissions", // optional, this is default
+  },
+  http: { port: 3000 },
+  createServer,
+});
+
+await start();
+```
+
+**When to use:**
+
+- You have an authentication gateway/proxy that validates requests
+- Permissions change frequently or are computed per-request
+- You can ensure headers are cryptographically signed or validated
+- Your auth system is external to the MCP server
+
+### Config-Based Permissions Setup (Static Map)
+
+Use a static map when you have a fixed set of clients with known permissions. This provides server-side control and better security.
+
+```ts
+import { createPermissionBasedMcpServer } from "toolception";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+
+const createServer = () =>
+  new McpServer({
+    name: "permission-config-server",
+    version: "1.0.0",
+    capabilities: { tools: { listChanged: false } },
+  });
+
+const { start, close } = await createPermissionBasedMcpServer({
+  catalog: {
+    admin: {
+      name: "Admin",
+      description: "Admin tools",
+      modules: ["admin"],
+    },
+    user: {
+      name: "User",
+      description: "User tools",
+      modules: ["user"],
+    },
+  },
+  moduleLoaders: {
+    admin: async () => [
+      /* admin tools */
+    ],
+    user: async () => [
+      /* user tools */
+    ],
+  },
+  permissions: {
+    source: "config",
+    staticMap: {
+      "admin-client-id": ["admin", "user"],
+      "user-client-id": ["user"],
+    },
+    defaultPermissions: [], // clients not in map get no toolsets
+  },
+  http: { port: 3000 },
+  createServer,
+});
+
+await start();
+```
+
+**When to use:**
+
+- You have a fixed set of known clients
+- Permissions are relatively stable
+- You want the highest security level
+- You want to avoid trusting client-provided data
+
+### Config-Based Permissions Setup (Resolver Function)
+
+Use a resolver function when you need custom logic to determine permissions, such as looking up from a database or applying complex rules.
+
+```ts
+import { createPermissionBasedMcpServer } from "toolception";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+
+const createServer = () =>
+  new McpServer({
+    name: "permission-resolver-server",
+    version: "1.0.0",
+    capabilities: { tools: { listChanged: false } },
+  });
+
+const { start, close } = await createPermissionBasedMcpServer({
+  catalog: {
+    admin: {
+      name: "Admin",
+      description: "Admin tools",
+      modules: ["admin"],
+    },
+    user: {
+      name: "User",
+      description: "User tools",
+      modules: ["user"],
+    },
+  },
+  moduleLoaders: {
+    admin: async () => [
+      /* admin tools */
+    ],
+    user: async () => [
+      /* user tools */
+    ],
+  },
+  permissions: {
+    source: "config",
+    resolver: (clientId: string) => {
+      // Custom logic - could check database, config file, etc.
+      if (clientId.startsWith("admin-")) {
+        return ["admin", "user"];
+      }
+      if (clientId.startsWith("user-")) {
+        return ["user"];
+      }
+      return [];
+    },
+    staticMap: {
+      // optional fallback
+      "special-client": ["admin"],
+    },
+    defaultPermissions: [],
+  },
+  http: { port: 3000 },
+  createServer,
+});
+
+await start();
+```
+
+**When to use:**
+
+- You need custom permission logic
+- Permissions are computed based on client ID patterns or attributes
+- You want to integrate with existing permission systems
+- You need fallback behavior with staticMap
+
+**Note:** Resolver functions must be synchronous. If you need to fetch permissions from external sources, do so before server creation and cache the results.
 
 ## API
 
@@ -352,6 +746,89 @@ Required factory to create the SDK server instance(s).
 
 - JSON Schema exposed at `GET /.well-known/mcp-config` for client discovery.
 
+### createPermissionBasedMcpServer(options)
+
+Creates a permission-aware MCP server where each client receives only the toolsets they're authorized to access. This function provides a separate API for permission-based scenarios while maintaining the same interface as `createMcpServer`.
+
+Requirements
+
+- `createServer` must be provided
+- `permissions` configuration must be provided
+- Server operates in STATIC mode per-client (toolsets determined by permissions)
+- Each client gets an isolated server instance with their specific toolsets
+
+#### options.permissions (required)
+
+`PermissionConfig`
+
+Defines how client permissions are resolved and enforced.
+
+**Permission Source Types**
+
+| Source    | Description                           | Use Case                           | Security Level                        |
+| --------- | ------------------------------------- | ---------------------------------- | ------------------------------------- |
+| `headers` | Read permissions from request headers | Behind authenticated proxy/gateway | Medium (requires external validation) |
+| `config`  | Server-side permission lookup         | Direct server control              | High (server-controlled)              |
+
+**Header-Based Configuration**
+
+| Field        | Type        | Default                     | Description                                         |
+| ------------ | ----------- | --------------------------- | --------------------------------------------------- |
+| `source`     | `'headers'` | required                    | Indicates header-based permissions                  |
+| `headerName` | `string`    | `'mcp-toolset-permissions'` | Header name containing comma-separated toolset list |
+
+**Config-Based Configuration**
+
+| Field                | Type                             | Required                     | Description                                              |
+| -------------------- | -------------------------------- | ---------------------------- | -------------------------------------------------------- |
+| `source`             | `'config'`                       | yes                          | Indicates config-based permissions                       |
+| `staticMap`          | `Record<string, string[]>`       | one of staticMap or resolver | Maps client IDs to toolset arrays                        |
+| `resolver`           | `(clientId: string) => string[]` | one of staticMap or resolver | Function returning toolset array for client              |
+| `defaultPermissions` | `string[]`                       | no                           | Fallback permissions for unknown clients (default: `[]`) |
+
+**Notes**
+
+- For config-based permissions, at least one of `staticMap` or `resolver` must be provided
+- If both are provided, `resolver` is tried first, then `staticMap`, then `defaultPermissions`
+- Resolver functions must be synchronous and return string arrays
+- Invalid toolset names in permissions are filtered out during server creation
+
+#### options.catalog (required)
+
+Same as `createMcpServer` - see [options.catalog](#optionscatalog-required).
+
+#### options.moduleLoaders (optional)
+
+Same as `createMcpServer` - see [options.moduleLoaders](#optionsmoduleloaders-optional).
+
+#### options.exposurePolicy (optional)
+
+`ExposurePolicy` (partial support)
+
+Permission-based servers override certain policy fields:
+
+- `allowlist`: Set automatically based on resolved permissions (cannot be manually configured)
+- `maxActiveToolsets`: Set automatically to match permission count
+- `namespaceToolsWithSetKey`: Supported (default: true)
+- `denylist`: Not supported (use permissions instead)
+- `onLimitExceeded`: Not applicable
+
+#### options.http (optional)
+
+Same as `createMcpServer` - see [options.http](#optionshttp-optional).
+
+#### options.createServer (required)
+
+Same as `createMcpServer` - see [options.createServer](#optionscreateserver-optional).
+
+#### options.configSchema (optional)
+
+Same as `createMcpServer` - see [options.configSchema](#optionsconfigschema-optional).
+
+#### options.context (optional)
+
+Same as `createMcpServer` - see [options.context](#optionscontext-optional).
+
 ### Meta-tools
 
 Enabled by default when mode is DYNAMIC (or when `registerMetaTools` is true):
@@ -359,6 +836,77 @@ Enabled by default when mode is DYNAMIC (or when `registerMetaTools` is true):
 - `enable_toolset`, `disable_toolset`, `list_tools`
   Only in DYNAMIC mode:
 - `list_toolsets`, `describe_toolset`
+
+## Permission-based client integration
+
+### Using Header-Based Permissions
+
+When connecting to a permission-based server with header-based permissions, include the `mcp-toolset-permissions` header with a comma-separated list of toolsets:
+
+```ts
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+
+const clientId = "my-client-id";
+const allowedToolsets = ["user", "reports"]; // determined by your auth system
+
+const transport = new StreamableHTTPClientTransport(
+  new URL("http://localhost:3000/mcp"),
+  {
+    requestInit: {
+      headers: {
+        "mcp-client-id": clientId,
+        "mcp-toolset-permissions": allowedToolsets.join(","),
+      },
+    },
+  }
+);
+
+const client = new Client({ name: "example-client", version: "1.0.0" });
+await client.connect(transport);
+
+// Client can only access tools from 'user' and 'reports' toolsets
+const tools = await client.listTools();
+console.log(tools); // Only shows user.* and reports.* tools
+
+await client.close();
+```
+
+**Important:** Your application layer must validate and potentially sign/encrypt the permission header to prevent tampering. The MCP server trusts the header value as-is.
+
+### Using Config-Based Permissions
+
+When connecting to a permission-based server with config-based permissions, only provide the `mcp-client-id` header. The server looks up permissions internally:
+
+```ts
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+
+const clientId = "admin-client-id"; // matches server's staticMap or resolver
+
+const transport = new StreamableHTTPClientTransport(
+  new URL("http://localhost:3000/mcp"),
+  {
+    requestInit: {
+      headers: {
+        "mcp-client-id": clientId,
+        // No permission header needed - server looks up permissions
+      },
+    },
+  }
+);
+
+const client = new Client({ name: "example-client", version: "1.0.0" });
+await client.connect(transport);
+
+// Client receives toolsets based on server configuration
+const tools = await client.listTools();
+console.log(tools); // Shows tools based on server's permission config
+
+await client.close();
+```
+
+**Security:** Config-based permissions provide better security since the client cannot influence their own permissions. Ensure your client IDs are authenticated and validated before reaching the MCP server.
 
 ## Client ID lifecycle
 
@@ -429,6 +977,360 @@ console.log(ping);
 
 // When finished
 await client.close();
+```
+
+## Permission-based security best practices
+
+### When to Use Each Approach
+
+**Use Header-Based Permissions When:**
+
+- You have an authentication gateway/proxy that validates and sets headers
+- You need dynamic permissions that change frequently
+- Your auth system is external to the MCP server
+- You can ensure headers are cryptographically signed or validated
+
+**Use Config-Based Permissions When:**
+
+- You want server-side control over permissions
+- Permissions are relatively stable
+- You need the highest security level
+- You want to avoid trusting client-provided data
+
+### Authentication and Authorization Patterns
+
+**Header-Based Pattern:**
+
+```
+Client → Auth Gateway → MCP Server
+         (validates,
+          sets headers)
+```
+
+The auth gateway must:
+
+1. Authenticate the client
+2. Determine authorized toolsets
+3. Set `mcp-toolset-permissions` header
+4. Optionally sign/encrypt headers to prevent tampering
+
+**Config-Based Pattern:**
+
+```
+Client → MCP Server → Permission Lookup
+         (validates     (staticMap or
+          client-id)     resolver)
+```
+
+The MCP server:
+
+1. Receives client-id
+2. Looks up permissions internally
+3. No trust in client-provided permission data
+
+### Header Validation and Signing
+
+If using header-based permissions, implement validation to prevent tampering:
+
+```ts
+import crypto from "crypto";
+
+// Example: Using HMAC to sign permission headers
+function signPermissions(
+  clientId: string,
+  toolsets: string[],
+  secret: string
+): string {
+  const data = `${clientId}:${toolsets.join(",")}`;
+  const signature = crypto
+    .createHmac("sha256", secret)
+    .update(data)
+    .digest("hex");
+  return `${toolsets.join(",")};sig=${signature}`;
+}
+
+function verifyPermissions(
+  clientId: string,
+  headerValue: string,
+  secret: string
+): string[] {
+  const [toolsetsStr, sigPart] = headerValue.split(";sig=");
+  const expectedSig = crypto
+    .createHmac("sha256", secret)
+    .update(`${clientId}:${toolsetsStr}`)
+    .digest("hex");
+
+  if (sigPart !== expectedSig) {
+    throw new Error("Invalid permission signature");
+  }
+
+  return toolsetsStr.split(",").map((s) => s.trim());
+}
+
+// In your auth gateway:
+const clientId = "user-123";
+const allowedToolsets = ["user", "reports"];
+const signedHeader = signPermissions(clientId, allowedToolsets, SECRET_KEY);
+
+// Forward to MCP server with signed header
+fetch("http://mcp-server:3000/mcp", {
+  headers: {
+    "mcp-client-id": clientId,
+    "mcp-toolset-permissions": signedHeader,
+  },
+});
+```
+
+### Security Considerations
+
+**Header-Based Permissions:**
+
+- **Risk:** Client can potentially manipulate headers if not properly secured
+- **Mitigation:** Always validate/sign headers in your application layer
+- **Recommendation:** Use only behind authenticated reverse proxy or gateway
+- **Best Practice:** Implement header signing with HMAC or JWT
+
+**Config-Based Permissions:**
+
+- **Benefit:** Server-side permission storage provides stronger security
+- **Recommendation:** Preferred for production environments
+- **Best Practice:** Authenticate client IDs before they reach the MCP server
+- **Note:** No client-side permission data exposure
+
+**General Security:**
+
+- **Permission Caching:** Permissions are cached per client session. Invalidate sessions when permissions change.
+- **Client Isolation:** Each client gets an isolated server instance. No cross-client permission leakage.
+- **Error Messages:** The server avoids exposing unauthorized toolset names in error responses.
+- **Client ID Validation:** Always validate and authenticate client IDs in your application layer before requests reach the MCP server.
+
+### Error Handling and Information Disclosure
+
+When a client attempts to access unauthorized toolsets:
+
+- The server returns a generic "Access denied" error
+- Unauthorized toolset names are not exposed in error messages
+- This prevents information disclosure about available toolsets
+- Clients only see tools they're authorized to access via `listTools()`
+
+## Permission-based common patterns
+
+### Multi-Tenant Server Setup
+
+Create a server where each tenant has access to their own toolsets plus shared tools:
+
+```ts
+import { createPermissionBasedMcpServer } from "toolception";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+
+const { start, close } = await createPermissionBasedMcpServer({
+  catalog: {
+    "tenant-a-tools": {
+      name: "Tenant A",
+      description: "Tools for tenant A",
+      modules: ["tenant-a"],
+    },
+    "tenant-b-tools": {
+      name: "Tenant B",
+      description: "Tools for tenant B",
+      modules: ["tenant-b"],
+    },
+    "shared-tools": {
+      name: "Shared",
+      description: "Shared tools",
+      modules: ["shared"],
+    },
+  },
+  moduleLoaders: {
+    "tenant-a": async () => [
+      /* tenant A specific tools */
+    ],
+    "tenant-b": async () => [
+      /* tenant B specific tools */
+    ],
+    shared: async () => [
+      /* shared tools */
+    ],
+  },
+  permissions: {
+    source: "config",
+    resolver: (clientId: string) => {
+      const [tenant] = clientId.split("-");
+      if (tenant === "tenantA") {
+        return ["tenant-a-tools", "shared-tools"];
+      }
+      if (tenant === "tenantB") {
+        return ["tenant-b-tools", "shared-tools"];
+      }
+      return ["shared-tools"]; // unknown tenants get only shared tools
+    },
+  },
+  http: { port: 3000 },
+  createServer: () =>
+    new McpServer({
+      name: "multi-tenant-server",
+      version: "1.0.0",
+      capabilities: { tools: { listChanged: false } },
+    }),
+});
+
+await start();
+```
+
+### Integration with External Auth Systems
+
+Integrate with an external authentication system by pre-loading permissions:
+
+```ts
+import { createPermissionBasedMcpServer } from "toolception";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+
+// Pre-load permissions from your auth system
+// This should be done before server creation and cached
+const permissionCache = new Map<string, string[]>();
+
+async function loadPermissionsFromAuthSystem() {
+  // Fetch permissions from your auth system
+  // This is just an example - implement according to your system
+  const users = await authSystem.getAllUsers();
+  for (const user of users) {
+    const permissions = await authSystem.getUserPermissions(user.id);
+    permissionCache.set(user.id, permissions.allowedToolsets);
+  }
+}
+
+// Load permissions at startup
+await loadPermissionsFromAuthSystem();
+
+// Optionally refresh permissions periodically
+setInterval(loadPermissionsFromAuthSystem, 5 * 60 * 1000); // every 5 minutes
+
+const { start, close } = await createPermissionBasedMcpServer({
+  catalog: {
+    /* your toolsets */
+  },
+  moduleLoaders: {
+    /* your loaders */
+  },
+  permissions: {
+    source: "config",
+    resolver: (clientId: string) => {
+      // Synchronous lookup from pre-loaded cache
+      return permissionCache.get(clientId) || [];
+    },
+    defaultPermissions: ["public"], // unauthenticated users get public tools
+  },
+  http: { port: 3000 },
+  createServer: () =>
+    new McpServer({
+      name: "auth-integrated-server",
+      version: "1.0.0",
+      capabilities: { tools: { listChanged: false } },
+    }),
+});
+
+await start();
+```
+
+### Role-Based Access Control (RBAC)
+
+Implement role-based access control with predefined role-to-toolset mappings:
+
+```ts
+import { createPermissionBasedMcpServer } from "toolception";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+
+// Define role-to-toolset mappings
+const rolePermissions = {
+  admin: ["admin-tools", "user-tools", "reports", "analytics"],
+  manager: ["user-tools", "reports", "analytics"],
+  user: ["user-tools", "reports"],
+  guest: ["public-tools"],
+};
+
+// Map client IDs to roles (could come from database, JWT claims, etc.)
+function getRoleForClient(clientId: string): string {
+  // Example: extract role from client ID or look up in database
+  if (clientId.startsWith("admin-")) return "admin";
+  if (clientId.startsWith("manager-")) return "manager";
+  if (clientId.startsWith("user-")) return "user";
+  return "guest";
+}
+
+const { start, close } = await createPermissionBasedMcpServer({
+  catalog: {
+    "admin-tools": {
+      name: "Admin",
+      description: "Admin tools",
+      modules: ["admin"],
+    },
+    "user-tools": {
+      name: "User",
+      description: "User tools",
+      modules: ["user"],
+    },
+    reports: {
+      name: "Reports",
+      description: "Reporting tools",
+      modules: ["reports"],
+    },
+    analytics: {
+      name: "Analytics",
+      description: "Analytics tools",
+      modules: ["analytics"],
+    },
+    "public-tools": {
+      name: "Public",
+      description: "Public tools",
+      modules: ["public"],
+    },
+  },
+  moduleLoaders: {
+    admin: async () => [
+      /* admin tools */
+    ],
+    user: async () => [
+      /* user tools */
+    ],
+    reports: async () => [
+      /* report tools */
+    ],
+    analytics: async () => [
+      /* analytics tools */
+    ],
+    public: async () => [
+      /* public tools */
+    ],
+  },
+  permissions: {
+    source: "config",
+    staticMap: {
+      // Known admin users
+      "admin-user-1": rolePermissions.admin,
+      "admin-user-2": rolePermissions.admin,
+      // Known managers
+      "manager-user-1": rolePermissions.manager,
+      // Known regular users
+      "regular-user-1": rolePermissions.user,
+      "regular-user-2": rolePermissions.user,
+    },
+    resolver: (clientId: string) => {
+      // Dynamic role lookup for clients not in static map
+      const role = getRoleForClient(clientId);
+      return rolePermissions[role] || rolePermissions.guest;
+    },
+    defaultPermissions: rolePermissions.guest,
+  },
+  http: { port: 3000 },
+  createServer: () =>
+    new McpServer({
+      name: "rbac-server",
+      version: "1.0.0",
+      capabilities: { tools: { listChanged: false } },
+    }),
+});
+
+await start();
 ```
 
 ## Tool types
