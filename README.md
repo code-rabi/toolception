@@ -171,7 +171,7 @@ process.on("SIGTERM", async () => {
 
 ## Static startup
 
-Enable some or ALL toolsets at bootstrap. Note: provide a server or factory:
+Enable some or ALL toolsets at bootstrap. In STATIC mode, a single server instance is created and reused for all clients:
 
 ```ts
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -181,26 +181,30 @@ const staticCatalog = {
   quotes: { name: "Quotes", description: "Market quotes", modules: ["quotes"] },
 };
 
+// Load specific toolsets
 createMcpServer({
   catalog: staticCatalog,
   startup: { mode: "STATIC", toolsets: ["search", "quotes"] },
   http: { port: 3001 },
-  server: new McpServer({
-    name: "static-1",
-    version: "0.0.0",
-    capabilities: { tools: { listChanged: false } },
-  }),
+  createServer: () =>
+    new McpServer({
+      name: "static-1",
+      version: "0.0.0",
+      capabilities: { tools: { listChanged: false } },
+    }),
 });
 
+// Load ALL toolsets
 createMcpServer({
   catalog: staticCatalog,
   startup: { mode: "STATIC", toolsets: "ALL" },
   http: { port: 3002 },
-  server: new McpServer({
-    name: "static-2",
-    version: "0.0.0",
-    capabilities: { tools: { listChanged: false } },
-  }),
+  createServer: () =>
+    new McpServer({
+      name: "static-2",
+      version: "0.0.0",
+      capabilities: { tools: { listChanged: false } },
+    }),
 });
 ```
 
@@ -664,9 +668,11 @@ Startup precedence and validation
 
 #### options.registerMetaTools (optional)
 
-`boolean` (default: true in DYNAMIC mode; false in STATIC unless explicitly set)
+`boolean` (default: true in DYNAMIC mode; false in STATIC mode)
 
-- Whether to register management tools like `enable_toolset`, `disable_toolset`, `list_tools`.
+- Whether to register meta-tools for toolset management.
+- In DYNAMIC mode: Registers all meta-tools (`enable_toolset`, `disable_toolset`, `list_toolsets`, `describe_toolset`, `list_tools`).
+- In STATIC mode: Only registers `list_tools` (other meta-tools are not applicable since toolsets are fixed at startup).
 
 #### options.exposurePolicy (optional)
 
@@ -805,13 +811,17 @@ Same as `createMcpServer` - see [options.moduleLoaders](#optionsmoduleloaders-op
 
 `ExposurePolicy` (partial support)
 
-Permission-based servers override certain policy fields:
+Permission-based servers only support `namespaceToolsWithSetKey`. Other policy fields are ignored because toolset access is controlled by permissions:
 
-- `allowlist`: Set automatically based on resolved permissions (cannot be manually configured)
-- `maxActiveToolsets`: Set automatically to match permission count
-- `namespaceToolsWithSetKey`: Supported (default: true)
-- `denylist`: Not supported (use permissions instead)
-- `onLimitExceeded`: Not applicable
+| Field                      | Support                                           |
+| -------------------------- | ------------------------------------------------- |
+| `namespaceToolsWithSetKey` | ✅ Supported (default: true)                       |
+| `allowlist`                | ⚠️ Ignored (determined by client permissions)     |
+| `denylist`                 | ⚠️ Ignored (use permissions instead)              |
+| `maxActiveToolsets`        | ⚠️ Ignored (determined by permission count)       |
+| `onLimitExceeded`          | ⚠️ Ignored (no toolset limits enforced)           |
+
+**Note:** If you provide ignored options, the server will log warnings at startup to alert you.
 
 #### options.http (optional)
 
@@ -831,11 +841,21 @@ Same as `createMcpServer` - see [options.context](#optionscontext-optional).
 
 ### Meta-tools
 
-Enabled by default when mode is DYNAMIC (or when `registerMetaTools` is true):
+Meta-tools are registered based on mode:
 
-- `enable_toolset`, `disable_toolset`, `list_tools`
-  Only in DYNAMIC mode:
-- `list_toolsets`, `describe_toolset`
+**DYNAMIC mode** (registered by default, or when `registerMetaTools` is true):
+
+- `enable_toolset` - Enable a toolset by name
+- `disable_toolset` - Disable a toolset by name (state only; tools remain registered)
+- `list_toolsets` - List available toolsets with active status
+- `describe_toolset` - Describe a specific toolset with definition and tools
+- `list_tools` - List currently registered tool names
+
+**STATIC mode** (when `registerMetaTools` is true):
+
+- `list_tools` - List currently registered tool names
+
+Note: In STATIC mode, `enable_toolset`, `disable_toolset`, `list_toolsets`, and `describe_toolset` are not available since toolsets are fixed at startup.
 
 ## Permission-based client integration
 
@@ -1344,17 +1364,19 @@ Note on dynamic mode: Both direct and module-produced tools are supported. Modul
 
 ## Startup modes
 
-The server operates in one of two primary modes (legacy load-all is not recommended here):
+The server operates in one of two primary modes:
 
-1. Dynamic mode (startup.mode = "DYNAMIC")
+1. **Dynamic mode** (`startup.mode = "DYNAMIC"`)
 
-   - Starts with meta-tools for runtime management: `enable_toolset`, `disable_toolset`, `list_toolsets`, `describe_toolset`, and `list_tools` (always available)
+   - All meta-tools registered: `enable_toolset`, `disable_toolset`, `list_toolsets`, `describe_toolset`, `list_tools`
    - Tools are loaded on-demand via meta-tool calls
+   - Each client gets an isolated server instance
    - Best for flexible, task-specific workflows where tool needs change
 
-2. Static mode (startup.mode = "STATIC")
+2. **Static mode** (`startup.mode = "STATIC"`)
    - Pre-loads specific toolsets at startup (`toolsets` array or "ALL")
-   - Meta-tools limited to `list_tools` by default
+   - Only `list_tools` meta-tool is available (toolsets cannot be changed at runtime)
+   - A single server instance is reused for all clients
    - Best for known, consistent tool requirements
 
 ## License

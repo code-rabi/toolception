@@ -3,13 +3,18 @@ import { ToolsetValidator } from "../mode/ToolsetValidator.js";
 import { ModuleResolver } from "../mode/ModuleResolver.js";
 import { DynamicToolManager } from "./DynamicToolManager.js";
 import { registerMetaTools } from "../meta/registerMetaTools.js";
-import type { ExposurePolicy, Mode, ToolSetCatalog } from "../types/index.js";
+import type {
+  ExposurePolicy,
+  Mode,
+  ModuleLoader,
+  ToolSetCatalog,
+} from "../types/index.js";
 import { ToolRegistry } from "./ToolRegistry.js";
 
 export interface ServerOrchestratorOptions {
   server: McpServer;
   catalog: ToolSetCatalog;
-  moduleLoaders?: Record<string, any>;
+  moduleLoaders?: Record<string, ModuleLoader>;
   exposurePolicy?: ExposurePolicy;
   context?: unknown;
   notifyToolsListChanged?: () => Promise<void> | void;
@@ -22,6 +27,8 @@ export class ServerOrchestrator {
   private readonly resolver: ModuleResolver;
   private readonly manager: DynamicToolManager;
   private readonly toolsetValidator: ToolsetValidator;
+  private readonly initPromise: Promise<void>;
+  private initError: Error | null = null;
 
   constructor(options: ServerOrchestratorOptions) {
     this.toolsetValidator = new ToolsetValidator();
@@ -50,13 +57,54 @@ export class ServerOrchestrator {
       registerMetaTools(options.server, this.manager, { mode: this.mode });
     }
 
-    // Startup behavior
+    // Startup behavior - store promise for async initialization
     const initial = resolved.toolsets;
-    if (initial === "ALL") {
-      void this.manager.enableToolsets(this.resolver.getAvailableToolsets());
-    } else if (Array.isArray(initial) && initial.length > 0) {
-      void this.manager.enableToolsets(initial);
+    this.initPromise = this.initializeToolsets(initial);
+  }
+
+  /**
+   * Initializes toolsets asynchronously during construction.
+   * Stores any errors for later retrieval via ensureReady().
+   * @param initial - The toolsets to initialize or "ALL"
+   * @returns Promise that resolves when initialization is complete
+   * @private
+   */
+  private async initializeToolsets(
+    initial: string[] | "ALL" | undefined
+  ): Promise<void> {
+    try {
+      if (initial === "ALL") {
+        await this.manager.enableToolsets(this.resolver.getAvailableToolsets());
+      } else if (Array.isArray(initial) && initial.length > 0) {
+        await this.manager.enableToolsets(initial);
+      }
+    } catch (error) {
+      this.initError =
+        error instanceof Error ? error : new Error(String(error));
+      console.error("Failed to initialize toolsets:", this.initError);
     }
+  }
+
+  /**
+   * Waits for the orchestrator to be fully initialized.
+   * Call this before using the orchestrator to ensure all toolsets are loaded.
+   * @throws {Error} If initialization failed
+   */
+  public async ensureReady(): Promise<void> {
+    await this.initPromise;
+    if (this.initError) {
+      throw this.initError;
+    }
+  }
+
+  /**
+   * Checks if the orchestrator has finished initialization.
+   * Does not throw on error - use ensureReady() for that.
+   * @returns Promise that resolves to true if ready, false if initialization failed
+   */
+  public async isReady(): Promise<boolean> {
+    await this.initPromise;
+    return this.initError === null;
   }
 
   private resolveStartupConfig(

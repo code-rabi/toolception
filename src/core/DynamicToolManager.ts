@@ -37,6 +37,21 @@ export class DynamicToolManager {
       options.toolRegistry ?? new ToolRegistry({ namespaceWithToolset: true });
   }
 
+  /**
+   * Sends a tool list change notification if configured.
+   * Logs warnings on failure instead of throwing.
+   * @returns Promise that resolves when notification is sent (or skipped)
+   * @private
+   */
+  private async notifyToolsChanged(): Promise<void> {
+    if (!this.onToolsListChanged) return;
+    try {
+      await this.onToolsListChanged();
+    } catch (err) {
+      console.warn("Failed to send tool list change notification:", err);
+    }
+  }
+
   public getAvailableToolsets(): string[] {
     return this.resolver.getAvailableToolsets();
   }
@@ -53,8 +68,16 @@ export class DynamicToolManager {
     return this.activeToolsets.has(name);
   }
 
+  /**
+   * Enables a single toolset by name.
+   * Validates the toolset, checks exposure policies, resolves tools, and registers them.
+   * @param toolsetName - The name of the toolset to enable
+   * @param skipNotification - If true, skips the tool list change notification (for batch operations)
+   * @returns Result object with success status and message
+   */
   public async enableToolset(
-    toolsetName: string
+    toolsetName: string,
+    skipNotification = false
   ): Promise<{ success: boolean; message: string }> {
     const validation = this.resolver.validateToolsetName(toolsetName);
     if (!validation.isValid || !validation.sanitized) {
@@ -71,44 +94,20 @@ export class DynamicToolManager {
       };
     }
 
+    // Check exposure policies BEFORE resolving tools to fail fast
+    const policyCheck = this.checkExposurePolicy(sanitized);
+    if (!policyCheck.allowed) {
+      return { success: false, message: policyCheck.message };
+    }
+
+    // Track tools registered for this enable operation to allow rollback
+    const registeredTools: string[] = [];
+
     try {
       const resolvedTools = await this.resolver.resolveToolsForToolsets(
         [sanitized],
         this.context
       );
-
-      // Exposure policy checks
-      if (
-        this.exposurePolicy?.allowlist &&
-        !this.exposurePolicy.allowlist.includes(sanitized)
-      ) {
-        return {
-          success: false,
-          message: `Toolset '${sanitized}' is not allowed by policy.`,
-        };
-      }
-      if (
-        this.exposurePolicy?.denylist &&
-        this.exposurePolicy.denylist.includes(sanitized)
-      ) {
-        return {
-          success: false,
-          message: `Toolset '${sanitized}' is denied by policy.`,
-        };
-      }
-      if (this.exposurePolicy?.maxActiveToolsets !== undefined) {
-        const next = this.activeToolsets.size + 1;
-        if (next > this.exposurePolicy.maxActiveToolsets) {
-          this.exposurePolicy.onLimitExceeded?.(
-            [sanitized],
-            Array.from(this.activeToolsets)
-          );
-          return {
-            success: false,
-            message: `Activation exceeds maxActiveToolsets (${this.exposurePolicy.maxActiveToolsets}).`,
-          };
-        }
-      }
 
       // Register all resolved tools (direct + module-derived)
       if (resolvedTools && resolvedTools.length > 0) {
@@ -116,17 +115,18 @@ export class DynamicToolManager {
           sanitized,
           resolvedTools
         );
-        this.registerDirectTools(mapped, sanitized);
+        for (const tool of mapped) {
+          this.registerSingleTool(tool, sanitized);
+          registeredTools.push(tool.name);
+        }
       }
 
-      // Track state (modules no longer tracked)
+      // Track state only after successful registration
       this.activeToolsets.add(sanitized);
 
-      // Notify list change
-      try {
-        await this.onToolsListChanged?.();
-      } catch (err) {
-        console.warn(`Failed to send tool list change notification:`, err);
+      // Notify list change (unless skipped for batch operations)
+      if (!skipNotification) {
+        await this.notifyToolsChanged();
       }
 
       return {
@@ -136,7 +136,15 @@ export class DynamicToolManager {
         } tools.`,
       };
     } catch (error) {
-      this.activeToolsets.delete(sanitized);
+      // Note: We cannot unregister tools from MCP server, but we can track the inconsistency
+      if (registeredTools.length > 0) {
+        console.warn(
+          `Partial failure enabling toolset '${sanitized}'. ` +
+            `${registeredTools.length} tools were registered but toolset activation failed. ` +
+            `Tools remain registered due to MCP limitations: ${registeredTools.join(", ")}`
+        );
+      }
+      // Don't add to activeToolsets since we failed
       return {
         success: false,
         message: `Failed to enable toolset '${sanitized}': ${
@@ -146,6 +154,74 @@ export class DynamicToolManager {
     }
   }
 
+  /**
+   * Checks if a toolset is allowed by the exposure policy.
+   * @param toolsetName - The sanitized toolset name to check
+   * @returns Object indicating if allowed and reason message if not
+   * @private
+   */
+  private checkExposurePolicy(toolsetName: string): {
+    allowed: boolean;
+    message: string;
+  } {
+    if (
+      this.exposurePolicy?.allowlist &&
+      !this.exposurePolicy.allowlist.includes(toolsetName)
+    ) {
+      return {
+        allowed: false,
+        message: `Toolset '${toolsetName}' is not allowed by policy.`,
+      };
+    }
+    if (
+      this.exposurePolicy?.denylist &&
+      this.exposurePolicy.denylist.includes(toolsetName)
+    ) {
+      return {
+        allowed: false,
+        message: `Toolset '${toolsetName}' is denied by policy.`,
+      };
+    }
+    if (this.exposurePolicy?.maxActiveToolsets !== undefined) {
+      const next = this.activeToolsets.size + 1;
+      if (next > this.exposurePolicy.maxActiveToolsets) {
+        this.exposurePolicy.onLimitExceeded?.(
+          [toolsetName],
+          Array.from(this.activeToolsets)
+        );
+        return {
+          allowed: false,
+          message: `Activation exceeds maxActiveToolsets (${this.exposurePolicy.maxActiveToolsets}).`,
+        };
+      }
+    }
+    return { allowed: true, message: "" };
+  }
+
+  /**
+   * Registers a single tool with the MCP server.
+   * @param tool - The tool definition to register
+   * @param toolsetKey - The toolset key for tracking
+   * @private
+   */
+  private registerSingleTool(tool: McpToolDefinition, toolsetKey: string): void {
+    this.server.tool(
+      tool.name,
+      tool.description,
+      tool.inputSchema as Parameters<typeof this.server.tool>[2],
+      async (args: Record<string, unknown>) => {
+        return await tool.handler(args);
+      }
+    );
+    this.toolRegistry.addForToolset(toolsetKey, tool.name);
+  }
+
+  /**
+   * Disables a toolset by name.
+   * Note: Due to MCP limitations, tools remain registered but the toolset is marked inactive.
+   * @param toolsetName - The name of the toolset to disable
+   * @returns Result object with success status and message
+   */
   public async disableToolset(
     toolsetName: string
   ): Promise<{ success: boolean; message: string }> {
@@ -172,11 +248,7 @@ export class DynamicToolManager {
     // State-only disable; no unregistration support in MCP
     this.activeToolsets.delete(sanitized);
 
-    try {
-      await this.onToolsListChanged?.();
-    } catch (err) {
-      console.warn(`Failed to send tool list change notification:`, err);
-    }
+    await this.notifyToolsChanged();
 
     return {
       success: true,
@@ -196,6 +268,12 @@ export class DynamicToolManager {
     };
   }
 
+  /**
+   * Enables multiple toolsets in a batch operation.
+   * Sends a single notification after all toolsets are processed.
+   * @param toolsetNames - Array of toolset names to enable
+   * @returns Result object with overall success status and individual results
+   */
   public async enableToolsets(toolsetNames: string[]): Promise<{
     success: boolean;
     results: Array<{
@@ -212,9 +290,11 @@ export class DynamicToolManager {
       message: string;
       code?: ToolingErrorCode;
     }> = [];
+
+    // Enable each toolset, skipping individual notifications
     for (const name of toolsetNames) {
       try {
-        const res = await this.enableToolset(name);
+        const res = await this.enableToolset(name, true);
         results.push({ name, ...res });
       } catch (err) {
         results.push({
@@ -225,41 +305,27 @@ export class DynamicToolManager {
         });
       }
     }
+
     const successAll = results.every((r) => r.success);
+    const anySuccess = results.some((r) => r.success);
     const message = successAll
       ? "All toolsets enabled"
-      : "Some toolsets failed to enable";
-    if (results.length > 0) {
-      try {
-        await this.onToolsListChanged?.();
-      } catch {}
+      : anySuccess
+        ? "Some toolsets failed to enable"
+        : "All toolsets failed to enable";
+
+    // Send a single notification after batch is complete (if any changes occurred)
+    if (anySuccess) {
+      await this.notifyToolsChanged();
     }
+
     return { success: successAll, results, message };
   }
 
-  private registerDirectTools(
-    tools: McpToolDefinition[],
-    toolsetKey?: string
-  ): void {
-    for (const tool of tools) {
-      try {
-        this.server.tool(
-          tool.name,
-          tool.description,
-          tool.inputSchema as any,
-          async (args: any) => {
-            return await tool.handler(args);
-          }
-        );
-        if (toolsetKey) this.toolRegistry.addForToolset(toolsetKey, tool.name);
-        else this.toolRegistry.add(tool.name);
-      } catch (err) {
-        console.error(`Failed to register direct tool '${tool.name}':`, err);
-        throw err;
-      }
-    }
-  }
-
+  /**
+   * Enables all available toolsets in a batch operation.
+   * @returns Result object with overall success status and individual results
+   */
   public async enableAllToolsets(): Promise<{
     success: boolean;
     results: Array<{

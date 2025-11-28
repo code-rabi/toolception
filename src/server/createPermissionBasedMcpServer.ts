@@ -1,10 +1,58 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { CreatePermissionBasedMcpServerOptions } from "../types/index.js";
+import type {
+  CreatePermissionBasedMcpServerOptions,
+  ExposurePolicy,
+} from "../types/index.js";
 import { validatePermissionConfig } from "../permissions/validatePermissionConfig.js";
 import { PermissionResolver } from "../permissions/PermissionResolver.js";
 import { ServerOrchestrator } from "../core/ServerOrchestrator.js";
 import { createPermissionAwareBundle } from "../permissions/createPermissionAwareBundle.js";
 import { PermissionAwareFastifyTransport } from "../permissions/PermissionAwareFastifyTransport.js";
+
+/**
+ * Validates and sanitizes exposure policy for permission-based servers.
+ * Certain policy options are not applicable or could conflict with permission-based access control.
+ * @param policy - The original exposure policy
+ * @returns Sanitized policy safe for permission-based servers
+ * @private
+ */
+function sanitizeExposurePolicyForPermissions(
+  policy?: ExposurePolicy
+): ExposurePolicy | undefined {
+  if (!policy) return undefined;
+
+  const sanitized: ExposurePolicy = {
+    namespaceToolsWithSetKey: policy.namespaceToolsWithSetKey,
+  };
+
+  // Warn about ignored options
+  if (policy.allowlist !== undefined) {
+    console.warn(
+      "Permission-based servers: exposurePolicy.allowlist is ignored. " +
+        "Allowed toolsets are determined by client permissions."
+    );
+  }
+  if (policy.denylist !== undefined) {
+    console.warn(
+      "Permission-based servers: exposurePolicy.denylist is ignored. " +
+        "Use permission configuration to control toolset access."
+    );
+  }
+  if (policy.maxActiveToolsets !== undefined) {
+    console.warn(
+      "Permission-based servers: exposurePolicy.maxActiveToolsets is ignored. " +
+        "Toolset count is determined by client permissions."
+    );
+  }
+  if (policy.onLimitExceeded !== undefined) {
+    console.warn(
+      "Permission-based servers: exposurePolicy.onLimitExceeded is ignored. " +
+        "No toolset limits are enforced."
+    );
+  }
+
+  return sanitized;
+}
 
 /**
  * Creates an MCP server with permission-based toolset access control.
@@ -92,6 +140,11 @@ export async function createPermissionBasedMcpServer(
     );
   }
 
+  // Sanitize exposure policy for permission-based operation
+  const sanitizedPolicy = sanitizeExposurePolicyForPermissions(
+    options.exposurePolicy
+  );
+
   // Create permission resolver instance
   const permissionResolver = new PermissionResolver(options.permissions);
 
@@ -104,7 +157,7 @@ export async function createPermissionBasedMcpServer(
     server: baseServer,
     catalog: options.catalog,
     moduleLoaders: options.moduleLoaders,
-    exposurePolicy: options.exposurePolicy,
+    exposurePolicy: sanitizedPolicy,
     context: options.context,
     notifyToolsListChanged: undefined, // No notifications in STATIC mode
     startup: { mode: "STATIC", toolsets: [] },
@@ -122,7 +175,7 @@ export async function createPermissionBasedMcpServer(
         server: clientServer,
         catalog: options.catalog,
         moduleLoaders: options.moduleLoaders,
-        exposurePolicy: options.exposurePolicy,
+        exposurePolicy: sanitizedPolicy,
         context: options.context,
         notifyToolsListChanged: undefined, // No notifications in STATIC mode
         startup: { mode: "STATIC", toolsets: [] }, // Empty - we'll enable manually
