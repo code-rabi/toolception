@@ -44,7 +44,12 @@ export class FastifyTransport {
     server: McpServer;
     orchestrator: ServerOrchestrator;
     sessions: Map<string, StreamableHTTPServerTransport>;
-  }>();
+  }>({
+    onEvict: (_key, bundle) => {
+      // Clean up all sessions when a client bundle is evicted
+      this.cleanupBundle(bundle);
+    },
+  });
 
   constructor(
     defaultManager: DynamicToolManager,
@@ -255,11 +260,44 @@ export class FastifyTransport {
     this.app = app;
   }
 
+  /**
+   * Stops the Fastify server and cleans up all resources.
+   * Closes all client sessions and clears the cache.
+   */
   public async stop(): Promise<void> {
     if (!this.app) return;
+
+    // Stop the cache pruning interval and clear all entries (triggers cleanup)
+    this.clientCache.stop(true);
+
     if (!this.options.app) {
       await this.app.close();
     }
     this.app = null;
+  }
+
+  /**
+   * Cleans up resources associated with a client bundle.
+   * Closes all sessions within the bundle.
+   * @param bundle - The client bundle to clean up
+   * @private
+   */
+  private cleanupBundle(bundle: {
+    server: McpServer;
+    orchestrator: ServerOrchestrator;
+    sessions: Map<string, StreamableHTTPServerTransport>;
+  }): void {
+    for (const [sessionId, transport] of bundle.sessions.entries()) {
+      try {
+        if (typeof (transport as any).close === "function") {
+          (transport as any).close().catch((err: unknown) => {
+            console.warn(`Error closing session ${sessionId}:`, err);
+          });
+        }
+      } catch (err) {
+        console.warn(`Error closing session ${sessionId}:`, err);
+      }
+    }
+    bundle.sessions.clear();
   }
 }

@@ -20,7 +20,14 @@ describe("createPermissionAwareBundle", () => {
       const { server } = createFakeMcpServer();
 
       const mockManager = {
-        enableToolsets: vi.fn().mockResolvedValue({ success: true }),
+        enableToolsets: vi.fn().mockResolvedValue({
+          success: true,
+          results: [
+            { name: "toolset-a", success: true, message: "enabled" },
+            { name: "toolset-b", success: true, message: "enabled" },
+          ],
+          message: "All toolsets enabled",
+        }),
       };
       const mockOrchestrator = {
         getManager: vi.fn().mockReturnValue(mockManager),
@@ -96,7 +103,14 @@ describe("createPermissionAwareBundle", () => {
       const { server } = createFakeMcpServer();
 
       const mockManager = {
-        enableToolsets: vi.fn().mockResolvedValue({ success: true }),
+        enableToolsets: vi.fn().mockResolvedValue({
+          success: true,
+          results: [
+            { name: "toolset-a", success: true, message: "enabled" },
+            { name: "toolset-b", success: true, message: "enabled" },
+          ],
+          message: "All toolsets enabled",
+        }),
       };
       const mockOrchestrator = {
         getManager: vi.fn().mockReturnValue(mockManager),
@@ -172,7 +186,13 @@ describe("createPermissionAwareBundle", () => {
       const { server } = createFakeMcpServer();
 
       const mockManager = {
-        enableToolsets: vi.fn().mockResolvedValue({ success: true }),
+        enableToolsets: vi.fn().mockImplementation((toolsets: string[]) => 
+          Promise.resolve({
+            success: true,
+            results: toolsets.map((name) => ({ name, success: true, message: "enabled" })),
+            message: "All toolsets enabled",
+          })
+        ),
       };
       const mockOrchestrator = {
         getManager: vi.fn().mockReturnValue(mockManager),
@@ -211,7 +231,15 @@ describe("createPermissionAwareBundle", () => {
       const { server } = createFakeMcpServer();
 
       const mockManager = {
-        enableToolsets: vi.fn().mockResolvedValue({ success: true }),
+        enableToolsets: vi.fn().mockResolvedValue({
+          success: true,
+          results: [
+            { name: "toolset-x", success: true, message: "enabled" },
+            { name: "toolset-y", success: true, message: "enabled" },
+            { name: "toolset-z", success: true, message: "enabled" },
+          ],
+          message: "All toolsets enabled",
+        }),
       };
       const mockOrchestrator = {
         getManager: vi.fn().mockReturnValue(mockManager),
@@ -246,7 +274,14 @@ describe("createPermissionAwareBundle", () => {
       const { server } = createFakeMcpServer();
 
       const mockManager = {
-        enableToolsets: vi.fn().mockResolvedValue({ success: true }),
+        enableToolsets: vi.fn().mockResolvedValue({
+          success: true,
+          results: [
+            { name: "toolset-a", success: true, message: "enabled" },
+            { name: "toolset-b", success: true, message: "enabled" },
+          ],
+          message: "All toolsets enabled",
+        }),
       };
       const mockOrchestrator = {
         getManager: vi.fn().mockReturnValue(mockManager),
@@ -285,7 +320,11 @@ describe("createPermissionAwareBundle", () => {
       const { server } = createFakeMcpServer();
 
       const mockManager = {
-        enableToolsets: vi.fn().mockResolvedValue({ success: true }),
+        enableToolsets: vi.fn().mockResolvedValue({
+          success: true,
+          results: [{ name: "toolset-a", success: true, message: "enabled" }],
+          message: "All toolsets enabled",
+        }),
       };
       const mockOrchestrator = {
         getManager: vi.fn().mockReturnValue(mockManager),
@@ -324,7 +363,11 @@ describe("createPermissionAwareBundle", () => {
       const { server } = createFakeMcpServer();
 
       const mockManager = {
-        enableToolsets: vi.fn().mockResolvedValue({ success: true }),
+        enableToolsets: vi.fn().mockResolvedValue({
+          success: true,
+          results: [{ name: "toolset-a", success: true, message: "enabled" }],
+          message: "All toolsets enabled",
+        }),
       };
       const mockOrchestrator = {
         getManager: vi.fn().mockReturnValue(mockManager),
@@ -358,7 +401,11 @@ describe("createPermissionAwareBundle", () => {
       const { server } = createFakeMcpServer();
 
       const mockManager = {
-        enableToolsets: vi.fn().mockResolvedValue({ success: true }),
+        enableToolsets: vi.fn().mockResolvedValue({
+          success: true,
+          results: [{ name: "toolset-a", success: true, message: "enabled" }],
+          message: "All toolsets enabled",
+        }),
       };
       const mockOrchestrator = {
         getManager: vi.fn().mockReturnValue(mockManager),
@@ -401,7 +448,11 @@ describe("createPermissionAwareBundle", () => {
       const { server } = createFakeMcpServer();
 
       const mockManager = {
-        enableToolsets: vi.fn().mockResolvedValue({ success: true }),
+        enableToolsets: vi.fn().mockResolvedValue({
+          success: true,
+          results: [{ name: "toolset-a", success: true, message: "enabled" }],
+          message: "All toolsets enabled",
+        }),
       };
       const mockOrchestrator = {
         getManager: vi.fn().mockReturnValue(mockManager),

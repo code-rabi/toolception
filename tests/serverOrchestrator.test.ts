@@ -65,12 +65,13 @@ describe("ServerOrchestrator", () => {
     // Expect namespaced registrations for catalog tools
     expect(names).toContain("core.ping");
     expect(names).toContain("ext.echo");
-    // Meta-tools: list_tools always available; list_toolsets not in static
+    // Meta-tools: list_tools always available in STATIC mode
     expect(names).toContain("list_tools");
+    // Dynamic-only meta-tools should NOT be registered in STATIC mode
     expect(names).not.toContain("list_toolsets");
-    // Enable/disable are available in both modes
-    expect(names).toContain("enable_toolset");
-    expect(names).toContain("disable_toolset");
+    expect(names).not.toContain("describe_toolset");
+    expect(names).not.toContain("enable_toolset");
+    expect(names).not.toContain("disable_toolset");
   });
 
   it("ignores toolsets in DYNAMIC mode with a warning", async () => {

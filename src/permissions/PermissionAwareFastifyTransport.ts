@@ -55,7 +55,13 @@ export class PermissionAwareFastifyTransport {
     orchestrator: ServerOrchestrator;
     sessions: Map<string, StreamableHTTPServerTransport>;
     allowedToolsets: string[];
-  }>();
+    failedToolsets: string[];
+  }>({
+    onEvict: (_key, bundle) => {
+      // Clean up all sessions when a client bundle is evicted
+      this.#cleanupBundle(bundle);
+    },
+  });
 
   /**
    * Creates a new PermissionAwareFastifyTransport instance.
@@ -113,14 +119,46 @@ export class PermissionAwareFastifyTransport {
   }
 
   /**
-   * Stops the Fastify server and cleans up resources.
+   * Stops the Fastify server and cleans up all resources.
+   * Closes all client sessions and clears the cache.
    */
   public async stop(): Promise<void> {
     if (!this.app) return;
+
+    // Stop the cache pruning interval and clear all entries (triggers cleanup)
+    this.clientCache.stop(true);
+
     if (!this.options.app) {
       await this.app.close();
     }
     this.app = null;
+  }
+
+  /**
+   * Cleans up resources associated with a client bundle.
+   * Closes all sessions within the bundle.
+   * @param bundle - The client bundle to clean up
+   * @private
+   */
+  #cleanupBundle(bundle: {
+    server: McpServer;
+    orchestrator: ServerOrchestrator;
+    sessions: Map<string, StreamableHTTPServerTransport>;
+    allowedToolsets: string[];
+    failedToolsets: string[];
+  }): void {
+    for (const [sessionId, transport] of bundle.sessions.entries()) {
+      try {
+        if (typeof (transport as any).close === "function") {
+          (transport as any).close().catch((err: unknown) => {
+            console.warn(`Error closing session ${sessionId}:`, err);
+          });
+        }
+      } catch (err) {
+        console.warn(`Error closing session ${sessionId}:`, err);
+      }
+    }
+    bundle.sessions.clear();
   }
 
   /**
@@ -198,15 +236,22 @@ export class PermissionAwareFastifyTransport {
         if (!bundle) {
           try {
             const created = await this.createPermissionAwareBundle(context);
-            
-            // Toolsets are already loaded via async bundle creation
-            // No need to manually enable them
-            
-            const providedSessions = (created as any).sessions;
+
+            // Log any failed toolsets for debugging
+            if (created.failedToolsets.length > 0) {
+              console.warn(
+                `Client ${context.clientId} had ${created.failedToolsets.length} toolsets fail to enable: ` +
+                  `[${created.failedToolsets.join(", ")}]. ` +
+                  `Successfully enabled: [${created.allowedToolsets.join(", ")}]`
+              );
+            }
+
+            const providedSessions = (created as { sessions?: Map<string, StreamableHTTPServerTransport> }).sessions;
             bundle = {
               server: created.server,
               orchestrator: created.orchestrator,
               allowedToolsets: created.allowedToolsets,
+              failedToolsets: created.failedToolsets,
               sessions:
                 providedSessions instanceof Map ? providedSessions : new Map(),
             };

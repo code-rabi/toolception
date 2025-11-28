@@ -116,18 +116,30 @@ export class ToolsetValidator {
     return { isValid: true, sanitized };
   }
 
+  /**
+   * Validates and retrieves modules for a set of toolsets.
+   * Note: A toolset with only direct tools (no modules) is valid and returns an empty modules array.
+   * @param toolsetNames - Array of toolset names to validate
+   * @param catalog - The toolset catalog to validate against
+   * @returns Validation result with modules array if valid
+   */
   public validateToolsetModules(
     toolsetNames: string[],
     catalog: ToolSetCatalog
   ): { isValid: boolean; modules?: string[]; error?: string } {
     try {
-      const modules = this.getModulesForToolSets(toolsetNames, catalog);
-      if (!modules || modules.length === 0) {
-        return {
-          isValid: false,
-          error: `No modules found for toolsets: ${toolsetNames.join(", ")}`,
-        };
+      // Verify all toolset names exist in catalog first
+      for (const name of toolsetNames) {
+        if (!catalog[name]) {
+          return {
+            isValid: false,
+            error: `Toolset '${name}' not found in catalog`,
+          };
+        }
       }
+
+      // Get modules - empty array is valid (toolset may have only direct tools)
+      const modules = this.getModulesForToolSets(toolsetNames, catalog);
       return { isValid: true, modules };
     } catch (error) {
       return {

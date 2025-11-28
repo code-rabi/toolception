@@ -1,5 +1,10 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { ExposurePolicy, Mode, ToolSetCatalog } from "../types/index.js";
+import type {
+  ExposurePolicy,
+  Mode,
+  ModuleLoader,
+  ToolSetCatalog,
+} from "../types/index.js";
 import { ServerOrchestrator } from "../core/ServerOrchestrator.js";
 import {
   FastifyTransport,
@@ -8,13 +13,14 @@ import {
 
 export interface CreateMcpServerOptions {
   catalog: ToolSetCatalog;
-  moduleLoaders?: Record<string, any>;
+  moduleLoaders?: Record<string, ModuleLoader>;
   exposurePolicy?: ExposurePolicy;
   context?: unknown;
   startup?: { mode?: Exclude<Mode, "ALL">; toolsets?: string[] | "ALL" };
   registerMetaTools?: boolean;
   http?: FastifyTransportOptions;
-  /** Factory to create an MCP server instance. Required.
+  /**
+   * Factory to create an MCP server instance. Required.
    * In DYNAMIC mode, a new instance is created per client bundle.
    * In STATIC mode, a single instance is created and reused across bundles.
    */
@@ -35,9 +41,15 @@ export async function createMcpServer(options: CreateMcpServerOptions) {
   };
   type NotifierB = { notifyToolsListChanged: () => Promise<void> | void };
   const hasNotifierA = (s: unknown): s is NotifierA =>
-    typeof (s as any)?.server?.notification === "function";
+    typeof (s as NotifierA)?.server?.notification === "function";
   const hasNotifierB = (s: unknown): s is NotifierB =>
-    typeof (s as any)?.notifyToolsListChanged === "function";
+    typeof (s as NotifierB)?.notifyToolsListChanged === "function";
+
+  /**
+   * Sends a tools list changed notification to the client.
+   * Logs warnings on failure instead of throwing.
+   * @param target - The MCP server instance
+   */
   const notifyToolsChanged = async (target: unknown) => {
     try {
       if (hasNotifierA(target)) {
@@ -49,7 +61,9 @@ export async function createMcpServer(options: CreateMcpServerOptions) {
       if (hasNotifierB(target)) {
         await target.notifyToolsListChanged();
       }
-    } catch {}
+    } catch (err) {
+      console.warn("Failed to send tools list changed notification:", err);
+    }
   };
 
   const orchestrator = new ServerOrchestrator({
