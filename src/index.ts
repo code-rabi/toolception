@@ -18,3 +18,19 @@ export type {
   PermissionConfig,
   CreatePermissionBasedMcpServerOptions,
 } from "./types/index.js";
+
+// Custom endpoint support
+export type {
+  CustomEndpointDefinition,
+  CustomEndpointRequest,
+  PermissionAwareEndpointRequest,
+  CustomEndpointHandler,
+  PermissionAwareEndpointHandler,
+  HttpMethod,
+  EndpointErrorResponse,
+} from "./http/customEndpoints.js";
+
+export {
+  defineEndpoint,
+  definePermissionAwareEndpoint,
+} from "./http/customEndpoints.js";
