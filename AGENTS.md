@@ -31,7 +31,31 @@
 
 - Meta-tools return JSON with `success` and `message` fields. Read `message` to adapt decisions (e.g., policy denial, already active, limits exceeded).
 
-## HTTP (debugging only)
+## HTTP endpoints
 
-- Endpoints: `GET /healthz`, `GET /tools`, `POST/GET/DELETE /mcp`, `GET /.well-known/mcp-config`.
-- Headers: use `mcp-client-id` to reuse per-client server bundles; `mcp-session-id` is managed by the MCP transport after initialize.
+### Built-in MCP endpoints
+
+- `GET /healthz` - Health check
+- `GET /tools` - List available toolsets and tools
+- `POST /mcp` - MCP JSON-RPC requests
+- `GET /mcp` - Server-sent events stream
+- `DELETE /mcp` - Close session
+- `GET /.well-known/mcp-config` - Configuration schema
+
+### Custom HTTP endpoints
+
+Servers may expose custom REST-like endpoints alongside MCP protocol endpoints. These are defined by the server implementer and provide direct HTTP access to functionality.
+
+- Custom endpoints use standard HTTP methods (GET, POST, PUT, DELETE, PATCH)
+- Request/response validation via Zod schemas
+- Access to client ID via `mcp-client-id` header
+- Permission-aware endpoints receive client's allowed toolsets
+- Standard error format with `VALIDATION_ERROR`, `INTERNAL_ERROR`, or `RESPONSE_VALIDATION_ERROR` codes
+
+Check `GET /tools` or server documentation to discover available custom endpoints.
+
+### Headers
+
+- `mcp-client-id`: Client identifier (reuse for per-client sessions)
+- `mcp-session-id`: Session identifier (managed by MCP transport after initialize)
+- `mcp-toolset-permissions`: Comma-separated toolset list (permission-based servers with header-based permissions)

@@ -1,21 +1,32 @@
 #!/usr/bin/env tsx
 
 /**
- * Example server demonstrating custom endpoint functionality.
+ * Custom Endpoints Demo - Comprehensive examples of HTTP endpoint integration
  *
- * This example shows:
- * - Basic GET/POST/PUT/DELETE endpoints with Zod validation
- * - Query parameter validation and coercion
- * - Path parameter validation
- * - Request body validation
- * - Response validation
- * - Client ID extraction
- * - Permission-aware endpoints
+ * This example demonstrates:
  *
- * Run this example with:
- *   npx tsx examples/custom-endpoints-demo.ts
+ * VALIDATION:
+ * - Query parameter validation with Zod (coercion, defaults, enums)
+ * - Path parameter validation (/users/:userId)
+ * - Request body validation (POST/PUT)
+ * - Response schema validation
  *
- * Then test the endpoints with curl:
+ * FEATURES:
+ * - All HTTP methods: GET, POST, PUT, DELETE
+ * - Client ID extraction from mcp-client-id header
+ * - Permission-aware endpoints (allowedToolsets, failedToolsets)
+ * - Type-safe handlers with automatic inference
+ * - Standard error responses (VALIDATION_ERROR, INTERNAL_ERROR)
+ *
+ * EXAMPLES:
+ * 1. Standard server with custom endpoints (port 3000)
+ * 2. Permission-based server with permission-aware endpoints (port 3001)
+ *
+ * Run this example:
+ *   npx tsx examples/custom-endpoints-demo.ts          # Standard server
+ *   npx tsx examples/custom-endpoints-demo.ts permission  # Permission-based server
+ *
+ * Quick test:
  *   curl "http://localhost:3000/api/users?limit=5"
  *   curl -X POST http://localhost:3000/api/users -H 'Content-Type: application/json' -d '{"name":"Alice","email":"alice@example.com"}'
  */
