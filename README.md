@@ -10,6 +10,7 @@
 - [Static startup](#static-startup)
 - [Permission-based starter guide](#permission-based-starter-guide)
 - [Permission configuration approaches](#permission-configuration-approaches)
+- [Custom HTTP endpoints](#custom-http-endpoints)
 - [API](#api)
   - [createMcpServer](#createmcpserveroptions)
   - [createPermissionBasedMcpServer](#createpermissionbasedmcpserveroptions)
@@ -589,6 +590,135 @@ await start();
 
 **Note:** Resolver functions must be synchronous. If you need to fetch permissions from external sources, do so before server creation and cache the results.
 
+## Custom HTTP endpoints
+
+Toolception supports custom HTTP endpoints alongside MCP protocol endpoints, enabling REST-like APIs with Zod validation and type inference.
+
+### Basic usage
+
+```ts
+import { createMcpServer, defineEndpoint } from "toolception";
+import { z } from "zod";
+
+const { start } = await createMcpServer({
+  // ... standard options
+  http: {
+    port: 3000,
+    customEndpoints: [
+      defineEndpoint({
+        method: "GET",
+        path: "/api/users",
+        querySchema: z.object({
+          limit: z.coerce.number().int().positive().default(10),
+          role: z.enum(["admin", "user"]).optional(),
+        }),
+        responseSchema: z.object({
+          users: z.array(z.object({ id: z.string(), name: z.string() })),
+        }),
+        handler: async (req) => {
+          // req.query is typed: { limit: number, role?: "admin" | "user" }
+          // req.clientId is available from mcp-client-id header
+          return { users: [{ id: "1", name: "Alice" }] };
+        },
+      }),
+    ],
+  },
+});
+```
+
+### Validation schemas
+
+- **querySchema**: Validates URL query parameters (use `z.coerce` for type conversion)
+- **bodySchema**: Validates request body (POST/PUT/PATCH)
+- **paramsSchema**: Validates path parameters (e.g., `/users/:userId`)
+- **responseSchema**: Validates handler response (prevents invalid data leakage)
+
+### Request context
+
+Handlers receive a typed request object:
+
+```ts
+{
+  body: TBody,        // Validated from bodySchema
+  query: TQuery,      // Validated from querySchema
+  params: TParams,    // Validated from paramsSchema
+  headers: Record<string, string | string[] | undefined>,
+  clientId: string,   // From mcp-client-id header or auto-generated
+}
+```
+
+### Permission-aware endpoints
+
+Use `definePermissionAwareEndpoint` in permission-based servers to access client permissions:
+
+```ts
+import { createPermissionBasedMcpServer, definePermissionAwareEndpoint } from "toolception";
+
+const { start } = await createPermissionBasedMcpServer({
+  // ... permission config
+  http: {
+    customEndpoints: [
+      definePermissionAwareEndpoint({
+        method: "GET",
+        path: "/api/me",
+        responseSchema: z.object({
+          clientId: z.string(),
+          allowedToolsets: z.array(z.string()),
+          isAdmin: z.boolean(),
+        }),
+        handler: async (req) => {
+          // req.allowedToolsets and req.failedToolsets are available
+          return {
+            clientId: req.clientId,
+            allowedToolsets: req.allowedToolsets,
+            isAdmin: req.allowedToolsets.includes("admin-tools"),
+          };
+        },
+      }),
+    ],
+  },
+});
+```
+
+### Error handling
+
+Validation failures return standardized error responses:
+
+- **400 VALIDATION_ERROR**: Request validation failed (body, query, or params)
+- **500 INTERNAL_ERROR**: Handler threw an exception
+- **500 RESPONSE_VALIDATION_ERROR**: Response validation failed
+
+Example error response:
+
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Validation failed for query",
+    "details": [
+      {
+        "code": "invalid_type",
+        "path": ["limit"],
+        "message": "Expected number, received string"
+      }
+    ]
+  }
+}
+```
+
+### Reserved paths
+
+Custom endpoints cannot override built-in MCP paths:
+
+- `/mcp` - MCP JSON-RPC endpoint
+- `/healthz` - Health check
+- `/tools` - Tool listing
+- `/.well-known/mcp-config` - Configuration schema
+
+### Complete example
+
+See `examples/custom-endpoints-demo.ts` for a full working example with GET, POST, PUT, DELETE endpoints, pagination, and permission-aware handlers.
+
 ## API
 
 ### createMcpServer(options)
@@ -736,9 +866,10 @@ const moduleLoaders = {
 
 #### options.http (optional)
 
-`{ host?: string; port?: number; basePath?: string; cors?: boolean; logger?: boolean }`
+`{ host?: string; port?: number; basePath?: string; cors?: boolean; logger?: boolean; customEndpoints?: CustomEndpointDefinition[] }`
 
 - Fastify transport configuration. Defaults: host `0.0.0.0`, port `3000`, basePath `/`, CORS enabled, logger disabled.
+- `customEndpoints`: Optional array of custom HTTP endpoints to register alongside MCP protocol endpoints. See [Custom HTTP endpoints](#custom-http-endpoints) for details.
 
 #### options.createServer (optional)
 
