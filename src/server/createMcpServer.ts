@@ -48,6 +48,7 @@ export async function createMcpServer(options: CreateMcpServerOptions) {
   /**
    * Sends a tools list changed notification to the client.
    * Logs warnings on failure instead of throwing.
+   * Suppresses "Not connected" errors as they're expected when no clients are connected.
    * @param target - The MCP server instance
    */
   const notifyToolsChanged = async (target: unknown) => {
@@ -62,6 +63,12 @@ export async function createMcpServer(options: CreateMcpServerOptions) {
         await target.notifyToolsListChanged();
       }
     } catch (err) {
+      // Suppress "Not connected" errors - expected when no clients are connected
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      if (errorMessage === "Not connected") {
+        return; // Silently ignore - no clients to notify
+      }
+      // Log other errors as they indicate actual problems
       console.warn("Failed to send tools list changed notification:", err);
     }
   };

@@ -15,6 +15,8 @@ import type {
   ClientRequestContext,
   PermissionAwareBundle,
 } from "./createPermissionAwareBundle.js";
+import type { CustomEndpointDefinition } from "../http/customEndpoints.js";
+import { registerCustomEndpoints } from "../http/endpointRegistration.js";
 
 export interface PermissionAwareFastifyTransportOptions {
   host?: string;
@@ -23,6 +25,12 @@ export interface PermissionAwareFastifyTransportOptions {
   cors?: boolean;
   logger?: boolean;
   app?: FastifyInstance;
+  /**
+   * Optional custom HTTP endpoints to register alongside MCP protocol endpoints.
+   * Allows adding REST-like endpoints with Zod validation and type inference.
+   * Handlers receive permission context (allowedToolsets, failedToolsets).
+   */
+  customEndpoints?: CustomEndpointDefinition[];
 }
 
 /**
@@ -41,6 +49,7 @@ export class PermissionAwareFastifyTransport {
     cors: boolean;
     logger: boolean;
     app?: FastifyInstance;
+    customEndpoints?: CustomEndpointDefinition[];
   };
   private readonly defaultManager: DynamicToolManager;
   private readonly createPermissionAwareBundle: (
@@ -87,6 +96,7 @@ export class PermissionAwareFastifyTransport {
       cors: options.cors ?? true,
       logger: options.logger ?? false,
       app: options.app,
+      customEndpoints: options.customEndpoints,
     };
     this.configSchema = configSchema;
   }
@@ -110,6 +120,35 @@ export class PermissionAwareFastifyTransport {
     this.#registerMcpPostEndpoint(app, base);
     this.#registerMcpGetEndpoint(app, base);
     this.#registerMcpDeleteEndpoint(app, base);
+
+    // Register custom endpoints if provided with permission context
+    // IMPORTANT: Only register if customEndpoints is provided AND has items
+    if (this.options.customEndpoints && this.options.customEndpoints.length > 0) {
+      registerCustomEndpoints(app, base, this.options.customEndpoints, {
+        contextExtractor: async (req) => {
+          // Extract client context from request
+          const context = this.#extractClientContext(req);
+
+          // Resolve permissions for this client
+          try {
+            const bundle = await this.createPermissionAwareBundle(context);
+            return {
+              allowedToolsets: bundle.allowedToolsets,
+              failedToolsets: bundle.failedToolsets,
+            };
+          } catch (error) {
+            // If permission resolution fails, return empty permissions
+            console.warn(
+              `Permission resolution failed for custom endpoint: ${error}`
+            );
+            return {
+              allowedToolsets: [],
+              failedToolsets: [],
+            };
+          }
+        },
+      });
+    }
 
     // Only listen if we created the app
     if (!this.options.app) {

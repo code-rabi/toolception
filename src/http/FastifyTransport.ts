@@ -11,6 +11,8 @@ import { ClientResourceCache } from "../session/ClientResourceCache.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { CustomEndpointDefinition } from "./customEndpoints.js";
+import { registerCustomEndpoints } from "./endpointRegistration.js";
 
 export interface FastifyTransportOptions {
   host?: string;
@@ -20,6 +22,11 @@ export interface FastifyTransportOptions {
   logger?: boolean;
   // Optional DI: provide a Fastify instance (e.g., for tests). If provided, start() will not listen.
   app?: FastifyInstance;
+  /**
+   * Optional custom HTTP endpoints to register alongside MCP protocol endpoints.
+   * Allows adding REST-like endpoints with Zod validation and type inference.
+   */
+  customEndpoints?: CustomEndpointDefinition[];
 }
 
 export class FastifyTransport {
@@ -30,6 +37,7 @@ export class FastifyTransport {
     cors: boolean;
     logger: boolean;
     app?: FastifyInstance;
+    customEndpoints?: CustomEndpointDefinition[];
   };
   private readonly defaultManager: DynamicToolManager;
   private readonly createBundle: () => {
@@ -66,6 +74,7 @@ export class FastifyTransport {
       cors: options.cors ?? true,
       logger: options.logger ?? false,
       app: options.app,
+      customEndpoints: options.customEndpoints,
     };
     this.configSchema = configSchema;
   }
@@ -252,6 +261,12 @@ export class FastifyTransport {
         return reply;
       }
     );
+
+    // Register custom endpoints if provided
+    // IMPORTANT: Only register if customEndpoints is provided AND has items
+    if (this.options.customEndpoints && this.options.customEndpoints.length > 0) {
+      registerCustomEndpoints(app, base, this.options.customEndpoints);
+    }
 
     // Only listen if we created the app
     if (!this.options.app) {
