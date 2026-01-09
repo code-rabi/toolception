@@ -221,4 +221,68 @@ describe("createMcpServer", () => {
       /Invalid startup configuration/
     );
   });
+
+  it("successfully parses valid startup config with 'mode' and 'toolsets' properties", async () => {
+    const f = makeFakeServerFactory();
+    const staticCatalog = {
+      core: {
+        name: "Core",
+        description: "",
+        tools: [
+          {
+            name: "ping",
+            description: "",
+            inputSchema: {},
+            handler: async () => ({ content: [{ type: "text", text: "pong" }] }),
+          },
+        ],
+      },
+    } as any;
+
+    await expect(
+      createMcpServer({
+        catalog: staticCatalog,
+        startup: { mode: "STATIC", toolsets: ["core"] },
+        createServer: f.createServer,
+      })
+    ).resolves.toBeTruthy();
+
+    const base = f.created[0];
+    expect(base.calls.filter((n) => n === "core.ping").length).toBe(1);
+  });
+
+  it("throws a Zod validation error for completely malformed startup config object", async () => {
+    const { createServer } = makeFakeServerFactory();
+
+    // Non-object startup value
+    const bad1 = {
+      catalog,
+      startup: 42 as any,
+      createServer,
+    } as any;
+
+    // Object with wrong types for both fields
+    const bad2 = {
+      catalog,
+      startup: { mode: 123, toolsets: 555 } as any,
+      createServer,
+    } as any;
+
+    await expect(createMcpServer(bad1)).rejects.toThrow(/Invalid startup configuration/);
+    await expect(createMcpServer(bad2)).rejects.toThrow(/Invalid startup configuration/);
+  });
+
+  it("accepts missing startup config without error (defaults to DYNAMIC)", async () => {
+    const f = makeFakeServerFactory();
+    await expect(
+      createMcpServer({
+        catalog,
+        createServer: f.createServer,
+      })
+    ).resolves.toBeTruthy();
+
+    // Default behavior in DYNAMIC mode is to register meta-tools
+    const base = f.created[0];
+    expect(base.calls.includes("list_tools")).toBe(true);
+  });
 });
