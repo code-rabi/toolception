@@ -10,6 +10,7 @@ import {
   FastifyTransport,
   type FastifyTransportOptions,
 } from "../http/FastifyTransport.js";
+import { z } from "zod";
 
 export interface CreateMcpServerOptions {
   catalog: ToolSetCatalog;
@@ -28,7 +29,34 @@ export interface CreateMcpServerOptions {
   configSchema?: object;
 }
 
+/**
+ * Zod schema for validating startup configuration.
+ * Uses strict mode to reject unknown properties like 'initialToolsets'.
+ */
+const startupConfigSchema = z
+  .object({
+    mode: z.enum(["DYNAMIC", "STATIC"]).optional(),
+    toolsets: z.union([z.array(z.string()), z.literal("ALL")]).optional(),
+  })
+  .strict();
+
 export async function createMcpServer(options: CreateMcpServerOptions) {
+  // Validate startup configuration if provided
+  if (options.startup) {
+    try {
+      startupConfigSchema.parse(options.startup);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const formatted = error.format();
+        throw new Error(
+          `Invalid startup configuration:\n${JSON.stringify(formatted, null, 2)}\n\n` +
+            `Hint: Common mistake - use "toolsets" not "initialToolsets"`
+        );
+      }
+      throw error;
+    }
+  }
+
   const mode: Exclude<Mode, "ALL"> = options.startup?.mode ?? "DYNAMIC";
   if (typeof options.createServer !== "function") {
     throw new Error("createMcpServer: `createServer` (factory) is required");
