@@ -87,6 +87,11 @@ export async function createMcpServer(options: CreateMcpServerOptions) {
         : mode === "DYNAMIC",
   });
 
+  // In STATIC mode, wait for initialization to complete before starting
+  if (mode === "STATIC") {
+    await orchestrator.ensureReady();
+  }
+
   const transport = new FastifyTransport(
     orchestrator.getManager(),
     () => {

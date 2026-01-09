@@ -160,4 +160,50 @@ describe("createMcpServer", () => {
     // No additional registrations should have occurred on the shared server
     expect(base.calls.filter((n) => n === "core.ping").length).toBe(1);
   });
+
+  it("ensures tools are ready immediately in STATIC mode (waits for async module loaders)", async () => {
+    const f = makeFakeServerFactory();
+    let moduleLoaderStarted = false;
+    let moduleLoaderCompleted = false;
+
+    const staticCatalog = {
+      testset: {
+        name: "Test Toolset",
+        description: "Test tools with async loading",
+        modules: ["testset"],
+      },
+    } as any;
+
+    await createMcpServer({
+      catalog: staticCatalog,
+      moduleLoaders: {
+        testset: async () => {
+          moduleLoaderStarted = true;
+          // Simulate async loading delay
+          await new Promise((r) => setTimeout(r, 100));
+          moduleLoaderCompleted = true;
+          return [
+            {
+              name: "test_tool",
+              description: "A test tool",
+              inputSchema: { type: "object", properties: {} },
+              handler: async () => ({
+                content: [{ type: "text", text: "test" }],
+              }),
+            },
+          ];
+        },
+      },
+      startup: { mode: "STATIC", toolsets: ["testset"] },
+      createServer: f.createServer,
+    });
+
+    // After createMcpServer returns, the module loader should have completed
+    expect(moduleLoaderStarted).toBe(true);
+    expect(moduleLoaderCompleted).toBe(true);
+
+    // Tools should be registered on the server
+    const base = f.created[0];
+    expect(base.calls.filter((n) => n === "testset.test_tool").length).toBe(1);
+  });
 });
