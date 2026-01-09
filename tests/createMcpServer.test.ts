@@ -206,4 +206,19 @@ describe("createMcpServer", () => {
     const base = f.created[0];
     expect(base.calls.filter((n) => n === "testset.test_tool").length).toBe(1);
   });
+
+  it("rejects invalid startup properties with Zod validation", async () => {
+    const { createServer } = makeFakeServerFactory();
+
+    // Type cast to bypass TypeScript checking (simulates user with loose types)
+    const invalidOptions = {
+      catalog: { core: { name: "Core", description: "", tools: [] } },
+      startup: { mode: "STATIC", initialToolsets: ["core"] }, // Wrong property!
+      createServer,
+    } as any;
+
+    await expect(createMcpServer(invalidOptions)).rejects.toThrow(
+      /Invalid startup configuration/
+    );
+  });
 });
