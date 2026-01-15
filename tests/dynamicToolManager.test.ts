@@ -133,4 +133,146 @@ describe("DynamicToolManager", () => {
     expect(res.results.length).toBe(2);
     expect(res.success).toBe(true);
   });
+
+  it("registers tools with annotations when provided", async () => {
+    const { server, tools } = createFakeMcpServer();
+    const catalogWithAnnotations = {
+      annotated: {
+        name: "Annotated Tools",
+        description: "Tools with annotations",
+        tools: [
+          {
+            name: "read_data",
+            description: "Read-only tool",
+            inputSchema: {},
+            handler: async () => ({ data: "test" }),
+            annotations: {
+              readOnlyHint: true,
+              idempotentHint: true,
+            },
+          },
+          {
+            name: "delete_data",
+            description: "Destructive tool",
+            inputSchema: {},
+            handler: async () => ({ deleted: true }),
+            annotations: {
+              destructiveHint: true,
+              idempotentHint: false,
+            },
+          },
+          {
+            name: "fetch_weather",
+            description: "External API tool",
+            inputSchema: {},
+            handler: async () => ({ weather: "sunny" }),
+            annotations: {
+              readOnlyHint: true,
+              openWorldHint: true,
+              idempotentHint: false,
+            },
+          },
+        ],
+      },
+    } as any;
+
+    const resolver = new ModuleResolver({ catalog: catalogWithAnnotations });
+    const manager = new DynamicToolManager({
+      server,
+      resolver,
+      toolRegistry: new ToolRegistry({ namespaceWithToolset: true }),
+    });
+
+    const res = await manager.enableToolset("annotated");
+    expect(res.success).toBe(true);
+
+    // Verify all tools were registered with correct annotations
+    expect(tools.length).toBe(3);
+
+    const readTool = tools.find((t) => t.name === "annotated.read_data");
+    expect(readTool).toBeDefined();
+    expect(readTool?.annotations).toEqual({
+      readOnlyHint: true,
+      idempotentHint: true,
+    });
+
+    const deleteTool = tools.find((t) => t.name === "annotated.delete_data");
+    expect(deleteTool).toBeDefined();
+    expect(deleteTool?.annotations).toEqual({
+      destructiveHint: true,
+      idempotentHint: false,
+    });
+
+    const fetchTool = tools.find((t) => t.name === "annotated.fetch_weather");
+    expect(fetchTool).toBeDefined();
+    expect(fetchTool?.annotations).toEqual({
+      readOnlyHint: true,
+      openWorldHint: true,
+      idempotentHint: false,
+    });
+  });
+
+  it("registers tools without annotations when not provided", async () => {
+    const { server, tools } = createFakeMcpServer();
+    const resolver = new ModuleResolver({ catalog });
+    const manager = new DynamicToolManager({
+      server,
+      resolver,
+      toolRegistry: new ToolRegistry({ namespaceWithToolset: true }),
+    });
+
+    const res = await manager.enableToolset("core");
+    expect(res.success).toBe(true);
+
+    const tool = tools.find((t) => t.name === "core.ping");
+    expect(tool).toBeDefined();
+    expect(tool?.annotations).toBeUndefined();
+  });
+
+  it("registers module-loaded tools with annotations", async () => {
+    const { server, tools } = createFakeMcpServer();
+    const catalogWithModules = {
+      external: {
+        name: "External",
+        description: "External tools",
+        modules: ["external"],
+      },
+    } as any;
+
+    const resolver = new ModuleResolver({
+      catalog: catalogWithModules,
+      moduleLoaders: {
+        external: async () => [
+          {
+            name: "api_call",
+            description: "Call external API",
+            inputSchema: {},
+            handler: async () => ({ result: "ok" }),
+            annotations: {
+              openWorldHint: true,
+              readOnlyHint: false,
+              idempotentHint: false,
+            },
+          },
+        ],
+      },
+    });
+
+    const manager = new DynamicToolManager({
+      server,
+      resolver,
+      toolRegistry: new ToolRegistry({ namespaceWithToolset: true }),
+    });
+
+    const res = await manager.enableToolset("external");
+    expect(res.success).toBe(true);
+
+    const tool = tools.find((t) => t.name === "external.api_call");
+    expect(tool).toBeDefined();
+    expect(tool?.annotations).toEqual({
+      openWorldHint: true,
+      readOnlyHint: false,
+      idempotentHint: false,
+    });
+  });
 });

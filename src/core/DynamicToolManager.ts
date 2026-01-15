@@ -205,14 +205,31 @@ export class DynamicToolManager {
    * @private
    */
   private registerSingleTool(tool: McpToolDefinition, toolsetKey: string): void {
-    this.server.tool(
-      tool.name,
-      tool.description,
-      tool.inputSchema as Parameters<typeof this.server.tool>[2],
-      async (args: Record<string, unknown>) => {
-        return await tool.handler(args);
-      }
-    );
+    // Only pass annotations if they exist and are not empty
+    const hasAnnotations =
+      tool.annotations && Object.keys(tool.annotations).length > 0;
+
+    if (hasAnnotations) {
+      this.server.tool(
+        tool.name,
+        tool.description,
+        tool.inputSchema as Parameters<typeof this.server.tool>[2],
+        tool.annotations,
+        async (args: Record<string, unknown>) => {
+          return await tool.handler(args);
+        }
+      );
+    } else {
+      // Legacy 4-parameter call when no annotations
+      this.server.tool(
+        tool.name,
+        tool.description,
+        tool.inputSchema as Parameters<typeof this.server.tool>[2],
+        async (args: Record<string, unknown>) => {
+          return await tool.handler(args);
+        }
+      );
+    }
     this.toolRegistry.addForToolset(toolsetKey, tool.name);
   }
 
