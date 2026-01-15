@@ -7,6 +7,22 @@ export type McpToolDefinition = {
   description: string;
   inputSchema: Record<string, any>;
   handler: (args: any) => Promise<any> | any;
+  /**
+   * Optional annotations providing hints about tool behavior.
+   * All annotations are hints and not guaranteed.
+   * - title: Optional display title for the tool
+   * - readOnlyHint: Tool does not modify its environment
+   * - destructiveHint: Tool may perform destructive updates
+   * - idempotentHint: Repeated calls with same arguments have no additional effect
+   * - openWorldHint: Tool interacts with external entities (APIs, web, etc.)
+   */
+  annotations?: {
+    title?: string;
+    destructiveHint?: boolean;
+    idempotentHint?: boolean;
+    readOnlyHint?: boolean;
+    openWorldHint?: boolean;
+  };
 };
 
 export type ToolSetDefinition = {
