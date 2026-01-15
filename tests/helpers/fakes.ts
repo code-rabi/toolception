@@ -3,6 +3,7 @@ export type RegisteredTool = {
   description: string;
   schema: any;
   annotations?: {
+    title?: string;
     destructiveHint?: boolean;
     idempotentHint?: boolean;
     readOnlyHint?: boolean;

@@ -209,7 +209,7 @@ export class DynamicToolManager {
     const hasAnnotations =
       tool.annotations && Object.keys(tool.annotations).length > 0;
 
-    if (hasAnnotations) {
+    if (hasAnnotations && tool.annotations) {
       this.server.tool(
         tool.name,
         tool.description,
