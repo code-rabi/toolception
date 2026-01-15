@@ -1,6 +1,6 @@
 {
   "name": "toolception",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "private": false,
   "type": "module",
   "main": "dist/index.js",
@@ -30,7 +30,7 @@
   },
   "devDependencies": {
     "@types/connect": "^3.4.38",
-    "@types/node": "^20.11.5",
+    "@types/node": "^25.0.0",
     "@vitest/coverage-v8": "^3.2.4",
     "tsx": "^4.19.0",
     "typescript": "^5.9.2",
@@ -39,7 +39,7 @@
     "vitest": "^3.2.4"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=25.3.0"
   },
   "license": "Apache-2.0",
   "description": "Dynamic MCP server toolkit for runtime toolset management with Fastify transport and meta-tools",
