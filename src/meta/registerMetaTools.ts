@@ -30,6 +30,7 @@ export function registerMetaTools(
       "enable_toolset",
       "Enable a toolset by name",
       { name: z.string().describe("Toolset name") },
+      { destructiveHint: true, idempotentHint: true },
       async (args: { name: string }) => {
         const result = await manager.enableToolset(args.name);
         return {
@@ -42,6 +43,7 @@ export function registerMetaTools(
       "disable_toolset",
       "Disable a toolset by name (state only)",
       { name: z.string().describe("Toolset name") },
+      { destructiveHint: true, idempotentHint: true },
       async (args: { name: string }) => {
         const result = await manager.disableToolset(args.name);
         return {
@@ -54,6 +56,7 @@ export function registerMetaTools(
       "list_toolsets",
       "List available toolsets with active status and definitions",
       {},
+      { readOnlyHint: true, idempotentHint: true },
       async () => {
         const available = manager.getAvailableToolsets();
         const byToolset = manager.getStatus().toolsetToTools;
@@ -85,6 +88,7 @@ export function registerMetaTools(
       "describe_toolset",
       "Describe a toolset with definition, active status and tools",
       { name: z.string().describe("Toolset name") },
+      { readOnlyHint: true, idempotentHint: true },
       async (args: { name: string }) => {
         const def = manager.getToolsetDefinition(args.name);
         const byToolset = manager.getStatus().toolsetToTools;
@@ -121,6 +125,7 @@ export function registerMetaTools(
     "list_tools",
     "List currently registered tool names (best effort)",
     {},
+    { readOnlyHint: true, idempotentHint: true },
     async () => {
       const status = manager.getStatus();
       const payload = {
