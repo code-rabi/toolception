@@ -29,7 +29,13 @@
 
 ## Error handling cues
 
-- Meta-tools return JSON with `success` and `message` fields. Read `message` to adapt decisions (e.g., policy denial, already active, limits exceeded).
+Meta-tool return formats:
+- `enable_toolset` and `disable_toolset` return `{ success: boolean, message: string }`
+- `list_tools` returns `{ tools: string[], toolsetToTools: Record<string, string[]> }`
+- `list_toolsets` returns `{ toolsets: Array<{ key, active, definition, tools }> }`
+- `describe_toolset` returns `{ key, active, definition, tools }` or `{ error: string }` if unknown
+
+For `enable_toolset`/`disable_toolset`, read `message` to adapt decisions (e.g., policy denial, already active, limits exceeded).
 
 ## HTTP endpoints
 
