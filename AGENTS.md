@@ -43,8 +43,8 @@ For `enable_toolset`/`disable_toolset`, read `message` to adapt decisions (e.g.,
 
 - `GET /healthz` - Health check
 - `GET /tools` - List available toolsets and tools
-- `POST /mcp` - MCP JSON-RPC requests
-- `GET /mcp` - Server-sent events stream
+- `POST /mcp` - MCP JSON-RPC requests (accepts `?config=` query parameter for session context)
+- `GET /mcp` - Server-sent events stream (accepts `?config=` query parameter for session context)
 - `DELETE /mcp` - Close session
 - `GET /.well-known/mcp-config` - Configuration schema
 
@@ -65,3 +65,7 @@ Check `GET /tools` or server documentation to discover available custom endpoint
 - `mcp-client-id`: Client identifier (reuse for per-client sessions)
 - `mcp-session-id`: Session identifier (managed by MCP transport after initialize)
 - `mcp-toolset-permissions`: Comma-separated toolset list (permission-based servers with header-based permissions)
+
+### Query parameters
+
+- `config`: Base64-encoded JSON containing session-specific context (if server has `sessionContext` enabled). Used for multi-tenant scenarios where each client needs different context values (API tokens, user IDs) passed to module loaders.

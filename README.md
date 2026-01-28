@@ -11,6 +11,7 @@
 - [Permission-based starter guide](#permission-based-starter-guide)
 - [Permission configuration approaches](#permission-configuration-approaches)
 - [Custom HTTP endpoints](#custom-http-endpoints)
+- [Per-session context](#per-session-context)
 - [API](#api)
   - [createMcpServer](#createmcpserveroptions)
   - [createPermissionBasedMcpServer](#createpermissionbasedmcpserveroptions)
@@ -39,6 +40,7 @@ Toolception addresses this by grouping tools into toolsets and letting you expos
 - **Large or multi-domain catalogs**: You have >20–50 tools or multiple domains (e.g., search, data, billing) and don’t want to expose them all at once.
 - **Task-specific workflows**: You want the client/agent to enable only the tools relevant to the current task.
 - **Multi-tenant or policy needs**: Different users/tenants require different tool access or limits.
+- **Per-session context**: You need different context values (API tokens, user IDs) for each client session passed to module loaders.
 - **Permission-based access control**: You need to enforce client-specific toolset permissions for security, compliance, or multi-tenant isolation. Each client should only see and access the toolsets they're authorized to use, with server-side or header-based permission enforcement.
 - **Collision-safe naming**: You need predictable, namespaced tool names to avoid conflicts.
 - **Lazy loading**: Some tools are heavy and should be loaded on demand.
@@ -719,6 +721,88 @@ Custom endpoints cannot override built-in MCP paths:
 
 See `examples/custom-endpoints-demo.ts` for a full working example with GET, POST, PUT, DELETE endpoints, pagination, and permission-aware handlers.
 
+## Per-session context
+
+Use the `sessionContext` option to enable per-client context values extracted from query parameters. This is useful for multi-tenant scenarios where each client needs different configuration (API tokens, user IDs, etc.) passed to module loaders.
+
+### Basic usage
+
+```ts
+import { createMcpServer } from "toolception";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+
+const { start } = await createMcpServer({
+  catalog: { /* ... */ },
+  moduleLoaders: { /* ... */ },
+  context: { baseValue: 'shared' },  // Base context for all sessions
+  sessionContext: {
+    enabled: true,
+    queryParam: {
+      name: 'config',
+      encoding: 'base64',
+      allowedKeys: ['API_TOKEN', 'USER_ID'],  // Security: always specify
+    },
+    merge: 'shallow',
+  },
+  createServer: () => new McpServer({
+    name: "my-server",
+    version: "1.0.0",
+    capabilities: { tools: { listChanged: true } },
+  }),
+  http: { port: 3000 },
+});
+
+await start();
+```
+
+### Client connection
+
+```bash
+# Encode session config as base64
+CONFIG=$(echo -n '{"API_TOKEN":"user-secret-token","USER_ID":"123"}' | base64)
+
+# Connect with session config
+curl -X POST "http://localhost:3000/mcp?config=$CONFIG" \
+  -H "mcp-client-id: my-client" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"initialize",...}'
+```
+
+### Module loader receives merged context
+
+```ts
+const moduleLoaders = {
+  tenant: async (ctx: any) => {
+    // ctx = { baseValue: 'shared', API_TOKEN: 'user-secret-token', USER_ID: '123' }
+    return [/* tools using ctx.API_TOKEN */];
+  },
+};
+```
+
+### Custom context resolver
+
+For advanced use cases, provide a custom resolver function:
+
+```ts
+sessionContext: {
+  enabled: true,
+  queryParam: { allowedKeys: ['tenant_id'] },
+  contextResolver: (request, baseContext, parsedConfig) => ({
+    ...baseContext,
+    ...parsedConfig,
+    clientId: request.clientId,
+    timestamp: Date.now(),
+  }),
+}
+```
+
+### Security considerations
+
+- **Always specify `allowedKeys`**: Without a whitelist, any key in the query config is accepted
+- **Fail-secure**: Invalid encoding silently falls back to base context
+- **No logging of values**: Session config values are never logged
+- **Filtered silently**: Disallowed keys are filtered without error messages
+
 ## API
 
 ### createMcpServer(options)
@@ -864,6 +948,28 @@ const moduleLoaders = {
 };
 ```
 
+#### options.sessionContext (optional)
+
+`SessionContextConfig`
+
+Configuration for per-session context extraction from query parameters. Enables multi-tenant use cases where each client session can have its own context values passed to module loaders. See [Per-session context](#per-session-context) for detailed usage examples.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | `true` | Whether session context extraction is enabled |
+| `queryParam.name` | `string` | `'config'` | Query parameter name |
+| `queryParam.encoding` | `'base64' \| 'json'` | `'base64'` | Encoding format |
+| `queryParam.allowedKeys` | `string[]` | - | Whitelist of allowed keys (recommended for security) |
+| `contextResolver` | `function` | - | Custom context resolver function |
+| `merge` | `'shallow' \| 'deep'` | `'shallow'` | How to merge with base context |
+
+Notes
+
+- Session context is extracted per-request and merged with the base `context` option
+- Each unique session config generates a different cache key, enabling per-tenant module caching
+- Invalid encoding or parsing errors silently fall back to base context (fail-secure)
+- Only applies to DYNAMIC mode servers; STATIC mode uses a single shared server instance
+
 #### options.http (optional)
 
 `{ host?: string; port?: number; basePath?: string; cors?: boolean; logger?: boolean; customEndpoints?: CustomEndpointDefinition[] }`
@@ -969,6 +1075,14 @@ Same as `createMcpServer` - see [options.configSchema](#optionsconfigschema-opti
 #### options.context (optional)
 
 Same as `createMcpServer` - see [options.context](#optionscontext-optional).
+
+#### options.sessionContext (optional)
+
+`SessionContextConfig`
+
+Session context is available in permission-based servers but has limited support. Because permission-based servers determine toolsets at connection time based on permissions, the session context cannot affect which toolsets are loaded. However, the merged context is still passed to module loaders.
+
+**Note:** A warning is issued if `sessionContext` is used with `createPermissionBasedMcpServer`. For full session context support with per-session toolset caching, use `createMcpServer` with DYNAMIC mode.
 
 ### Meta-tools
 

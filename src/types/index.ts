@@ -270,6 +270,122 @@ export type PermissionConfig = {
  * };
  * ```
  */
+/**
+ * Configuration for per-session context that can be extracted from query parameters
+ * and merged with the base context on a per-request basis.
+ *
+ * This enables multi-tenant use cases where each client session can have its own
+ * context values (e.g., API tokens, user IDs) that are passed to module loaders.
+ *
+ * @example Basic usage with query parameter
+ * ```typescript
+ * const options: SessionContextConfig = {
+ *   enabled: true,
+ *   queryParam: {
+ *     name: 'config',           // default
+ *     encoding: 'base64',       // default
+ *     allowedKeys: ['API_TOKEN', 'USER_ID'],  // whitelist (recommended)
+ *   },
+ *   merge: 'shallow',  // default
+ * };
+ * // Client sends: ?config=BASE64_ENCODED_JSON
+ * ```
+ *
+ * @example With custom context resolver
+ * ```typescript
+ * const options: SessionContextConfig = {
+ *   enabled: true,
+ *   queryParam: {
+ *     allowedKeys: ['tenant_id'],
+ *   },
+ *   contextResolver: (request, baseContext, parsedConfig) => {
+ *     // Custom logic to build final context
+ *     return {
+ *       ...baseContext,
+ *       ...parsedConfig,
+ *       resolvedAt: Date.now(),
+ *     };
+ *   },
+ * };
+ * ```
+ */
+export type SessionContextConfig = {
+  /**
+   * Whether session context extraction is enabled.
+   * @default true when SessionContextConfig is provided
+   */
+  enabled?: boolean;
+
+  /**
+   * Configuration for extracting context from query parameters.
+   */
+  queryParam?: {
+    /**
+     * Name of the query parameter containing the session config.
+     * @default 'config'
+     */
+    name?: string;
+
+    /**
+     * Encoding format of the query parameter value.
+     * - 'base64': Value is base64-encoded JSON (recommended for URLs)
+     * - 'json': Value is URL-encoded JSON
+     * @default 'base64'
+     */
+    encoding?: "base64" | "json";
+
+    /**
+     * Whitelist of allowed keys from the parsed config.
+     * Only these keys will be extracted and merged into context.
+     * Strongly recommended for security to prevent injection of arbitrary context values.
+     */
+    allowedKeys?: string[];
+  };
+
+  /**
+   * Optional custom function to resolve the final context.
+   * Called after query parameter parsing and key filtering.
+   *
+   * @param request - The request context (clientId, headers, query)
+   * @param baseContext - The base context from server configuration
+   * @param parsedQueryConfig - The parsed and filtered query config (if any)
+   * @returns The final merged context to pass to module loaders
+   */
+  contextResolver?: (
+    request: SessionRequestContext,
+    baseContext: unknown,
+    parsedQueryConfig?: Record<string, unknown>
+  ) => unknown;
+
+  /**
+   * How to merge session context with base context.
+   * - 'shallow': Object.assign style merge (session overrides base)
+   * - 'deep': Deep merge of nested objects
+   * @default 'shallow'
+   */
+  merge?: "shallow" | "deep";
+};
+
+/**
+ * Context information about the incoming request, available to context resolvers.
+ */
+export interface SessionRequestContext {
+  /**
+   * The client identifier (from mcp-client-id header or auto-generated).
+   */
+  clientId: string;
+
+  /**
+   * HTTP headers from the request (lowercased keys).
+   */
+  headers: Record<string, string>;
+
+  /**
+   * Query parameters from the request URL.
+   */
+  query: Record<string, string>;
+}
+
 export type CreatePermissionBasedMcpServerOptions = Omit<
   CreateMcpServerOptions,
   "startup"

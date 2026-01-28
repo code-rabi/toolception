@@ -4,6 +4,7 @@ import type {
   ExposurePolicy,
 } from "../types/index.js";
 import { validatePermissionConfig } from "../permissions/validatePermissionConfig.js";
+import { validateSessionContextConfig } from "../session/validateSessionContextConfig.js";
 import { PermissionResolver } from "../permissions/PermissionResolver.js";
 import { ServerOrchestrator } from "../core/ServerOrchestrator.js";
 import { createPermissionAwareBundle } from "../permissions/createPermissionAwareBundle.js";
@@ -124,6 +125,17 @@ export async function createPermissionBasedMcpServer(
 
   // Validate permission configuration
   validatePermissionConfig(options.permissions);
+
+  // Validate session context configuration if provided
+  if (options.sessionContext) {
+    validateSessionContextConfig(options.sessionContext);
+    // Note: Session context is validated but not yet fully implemented
+    // for permission-based servers. The base context is used for module loaders.
+    console.warn(
+      "Session context support for permission-based servers is limited. " +
+        "The base context will be used for module loaders."
+    );
+  }
 
   // Prevent startup.mode configuration - permissions determine toolsets
   if ((options as any).startup) {

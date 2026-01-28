@@ -1,0 +1,123 @@
+import type { SessionContextConfig } from "../types/index.js";
+
+/**
+ * Validates a session context configuration object to ensure it meets all requirements.
+ * Throws descriptive errors for any validation failures.
+ *
+ * @param config - The session context configuration to validate
+ * @throws {Error} If the configuration is invalid or has incorrect types
+ */
+export function validateSessionContextConfig(config: SessionContextConfig): void {
+  validateConfigExists(config);
+  validateQueryParamConfig(config);
+  validateContextResolver(config);
+  validateMergeStrategy(config);
+}
+
+/**
+ * Validates that the configuration object exists and is an object.
+ *
+ * @param config - The session context configuration to validate
+ * @throws {Error} If config is null, undefined, or not an object
+ * @private
+ */
+function validateConfigExists(config: SessionContextConfig): void {
+  if (!config || typeof config !== "object") {
+    throw new Error(
+      "Session context configuration must be an object"
+    );
+  }
+}
+
+/**
+ * Validates the queryParam configuration if provided.
+ *
+ * @param config - The session context configuration to validate
+ * @throws {Error} If queryParam fields have invalid types or values
+ * @private
+ */
+function validateQueryParamConfig(config: SessionContextConfig): void {
+  if (config.queryParam === undefined) {
+    return;
+  }
+
+  if (typeof config.queryParam !== "object" || config.queryParam === null) {
+    throw new Error("queryParam must be an object");
+  }
+
+  // Validate name
+  if (config.queryParam.name !== undefined) {
+    if (
+      typeof config.queryParam.name !== "string" ||
+      config.queryParam.name.length === 0
+    ) {
+      throw new Error("queryParam.name must be a non-empty string");
+    }
+  }
+
+  // Validate encoding
+  if (config.queryParam.encoding !== undefined) {
+    if (
+      config.queryParam.encoding !== "base64" &&
+      config.queryParam.encoding !== "json"
+    ) {
+      throw new Error(
+        `Invalid queryParam.encoding: "${config.queryParam.encoding}". Must be "base64" or "json"`
+      );
+    }
+  }
+
+  // Validate allowedKeys
+  if (config.queryParam.allowedKeys !== undefined) {
+    if (!Array.isArray(config.queryParam.allowedKeys)) {
+      throw new Error("queryParam.allowedKeys must be an array of strings");
+    }
+
+    for (let i = 0; i < config.queryParam.allowedKeys.length; i++) {
+      const key = config.queryParam.allowedKeys[i];
+      if (typeof key !== "string" || key.length === 0) {
+        throw new Error(
+          `queryParam.allowedKeys[${i}] must be a non-empty string`
+        );
+      }
+    }
+  }
+}
+
+/**
+ * Validates the contextResolver if provided.
+ *
+ * @param config - The session context configuration to validate
+ * @throws {Error} If contextResolver is not a function
+ * @private
+ */
+function validateContextResolver(config: SessionContextConfig): void {
+  if (config.contextResolver === undefined) {
+    return;
+  }
+
+  if (typeof config.contextResolver !== "function") {
+    throw new Error(
+      "contextResolver must be a function: (request, baseContext, parsedQueryConfig?) => unknown"
+    );
+  }
+}
+
+/**
+ * Validates the merge strategy if provided.
+ *
+ * @param config - The session context configuration to validate
+ * @throws {Error} If merge is not 'shallow' or 'deep'
+ * @private
+ */
+function validateMergeStrategy(config: SessionContextConfig): void {
+  if (config.merge === undefined) {
+    return;
+  }
+
+  if (config.merge !== "shallow" && config.merge !== "deep") {
+    throw new Error(
+      `Invalid merge strategy: "${config.merge}". Must be "shallow" or "deep"`
+    );
+  }
+}
