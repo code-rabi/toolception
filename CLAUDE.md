@@ -78,6 +78,14 @@ Two main factory functions in `src/server/`:
 - Extends FastifyTransport with permission checking
 - Supports header-based or config-based permissions
 
+### Session Context
+
+**SessionContextResolver** (`src/session/SessionContextResolver.ts`)
+- Parses query parameter (base64/json encoding)
+- Filters allowed keys (whitelist enforcement)
+- Merges session context with base context (shallow or deep)
+- Generates cache key suffix for session differentiation
+
 ### Key Types (`src/types/index.ts`)
 
 - `McpToolDefinition` - Tool with name, description, inputSchema, handler, optional annotations
@@ -85,6 +93,8 @@ Two main factory functions in `src/server/`:
 - `ToolSetCatalog` - Record of toolset key to definition
 - `ExposurePolicy` - Controls maxActiveToolsets, allowlist, denylist, namespacing
 - `PermissionConfig` - Header or config-based permission source
+- `SessionContextConfig` - Per-session context configuration (query params, encoding, merge strategy)
+- `SessionRequestContext` - Request context (clientId, headers, query) for context resolvers
 
 ### Meta-tools (DYNAMIC mode)
 
@@ -98,7 +108,17 @@ Registered in `src/meta/registerMetaTools.ts`:
 Tests use Vitest with in-memory mocks. Key patterns:
 - Fake MCP server in `tests/helpers/fakes.ts`
 - Unit tests alongside integration tests in `tests/`
+- E2E tests in `tests/e2e/` for full server/client flows
 - Smoke E2E tests in `tests/smoke-e2e/` for manual server/client testing
+
+### Key Test Files
+
+- `tests/sessionContextResolver.test.ts` - Unit tests for SessionContextResolver (parsing, filtering, merging)
+- `tests/validateSessionContextConfig.test.ts` - Validation tests for SessionContextConfig
+- `tests/sessionContext.integration.test.ts` - Integration tests for session context with HTTP transport
+- `tests/e2e/dynamicMode.e2e.test.ts` - E2E tests for DYNAMIC mode and session context
+- `tests/e2e/staticMode.e2e.test.ts` - E2E tests for STATIC mode
+- `tests/e2e/permissionBased.e2e.test.ts` - E2E tests for permission-based servers
 
 ## Build System
 

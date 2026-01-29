@@ -8,6 +8,8 @@ import { randomUUID } from "node:crypto";
 import type { DynamicToolManager } from "../core/DynamicToolManager.js";
 import type { ServerOrchestrator } from "../core/ServerOrchestrator.js";
 import { ClientResourceCache } from "../session/ClientResourceCache.js";
+import type { SessionContextResolver } from "../session/SessionContextResolver.js";
+import type { SessionRequestContext } from "../types/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -29,6 +31,15 @@ export interface FastifyTransportOptions {
   customEndpoints?: CustomEndpointDefinition[];
 }
 
+/**
+ * Callback type for creating a server bundle.
+ * Accepts an optional merged context for per-session context support.
+ */
+export type CreateBundleCallback = (mergedContext?: unknown) => {
+  server: McpServer;
+  orchestrator: ServerOrchestrator;
+};
+
 export class FastifyTransport {
   private readonly options: {
     host: string;
@@ -40,10 +51,9 @@ export class FastifyTransport {
     customEndpoints?: CustomEndpointDefinition[];
   };
   private readonly defaultManager: DynamicToolManager;
-  private readonly createBundle: () => {
-    server: McpServer;
-    orchestrator: ServerOrchestrator;
-  };
+  private readonly createBundle: CreateBundleCallback;
+  private readonly sessionContextResolver?: SessionContextResolver;
+  private readonly baseContext?: unknown;
   private app: FastifyInstance | null = null;
   private readonly configSchema?: object;
 
@@ -61,12 +71,16 @@ export class FastifyTransport {
 
   constructor(
     defaultManager: DynamicToolManager,
-    createBundle: () => { server: McpServer; orchestrator: ServerOrchestrator },
+    createBundle: CreateBundleCallback,
     options: FastifyTransportOptions = {},
-    configSchema?: object
+    configSchema?: object,
+    sessionContextResolver?: SessionContextResolver,
+    baseContext?: unknown
   ) {
     this.defaultManager = defaultManager;
     this.createBundle = createBundle;
+    this.sessionContextResolver = sessionContextResolver;
+    this.baseContext = baseContext;
     this.options = {
       host: options.host ?? "0.0.0.0",
       port: options.port ?? 3000,
@@ -125,17 +139,21 @@ export class FastifyTransport {
         // When anon id, avoid caching (one-off)
         const useCache = !clientId.startsWith("anon-");
 
-        let bundle = useCache ? this.clientCache.get(clientId) : null;
+        // Build session request context and resolve merged context
+        const { cacheKey, mergedContext } = this.resolveSessionContext(
+          req,
+          clientId
+        );
+
+        let bundle = useCache ? this.clientCache.get(cacheKey) : null;
         if (!bundle) {
-          const created = this.createBundle();
-          const providedSessions = (created as any).sessions;
+          const created = this.createBundle(mergedContext);
           bundle = {
             server: created.server,
             orchestrator: created.orchestrator,
-            sessions:
-              providedSessions instanceof Map ? providedSessions : new Map(),
+            sessions: new Map(),
           };
-          if (useCache) this.clientCache.set(clientId, bundle);
+          if (useCache) this.clientCache.set(cacheKey, bundle);
         }
 
         const sessionId = req.headers["mcp-session-id"] as string | undefined;
@@ -314,5 +332,92 @@ export class FastifyTransport {
       }
     }
     bundle.sessions.clear();
+  }
+
+  /**
+   * Resolves the session context and generates a cache key for the request.
+   * If a session context resolver is configured, it extracts query parameters
+   * and merges session-specific context with the base context.
+   *
+   * @param req - The Fastify request
+   * @param clientId - The client identifier
+   * @returns Object with cache key and merged context
+   * @private
+   */
+  private resolveSessionContext(
+    req: FastifyRequest,
+    clientId: string
+  ): { cacheKey: string; mergedContext: unknown } {
+    // If no session context resolver, use simple clientId cache key
+    if (!this.sessionContextResolver) {
+      return {
+        cacheKey: clientId,
+        mergedContext: this.baseContext,
+      };
+    }
+
+    // Build session request context
+    const sessionRequestContext: SessionRequestContext = {
+      clientId,
+      headers: this.extractHeaders(req),
+      query: this.extractQuery(req),
+    };
+
+    // Resolve the merged context
+    const result = this.sessionContextResolver.resolve(
+      sessionRequestContext,
+      this.baseContext
+    );
+
+    // Build cache key: clientId:suffix
+    const cacheKey =
+      result.cacheKeySuffix === "default"
+        ? clientId
+        : `${clientId}:${result.cacheKeySuffix}`;
+
+    return {
+      cacheKey,
+      mergedContext: result.context,
+    };
+  }
+
+  /**
+   * Extracts headers from a Fastify request as a Record.
+   * Normalizes header names to lowercase.
+   *
+   * @param req - The Fastify request
+   * @returns Headers as a string record
+   * @private
+   */
+  private extractHeaders(req: FastifyRequest): Record<string, string> {
+    const headers: Record<string, string> = {};
+    for (const [key, value] of Object.entries(req.headers)) {
+      if (typeof value === "string") {
+        headers[key.toLowerCase()] = value;
+      } else if (Array.isArray(value) && value.length > 0) {
+        headers[key.toLowerCase()] = value[0];
+      }
+    }
+    return headers;
+  }
+
+  /**
+   * Extracts query parameters from a Fastify request as a Record.
+   *
+   * @param req - The Fastify request
+   * @returns Query parameters as a string record
+   * @private
+   */
+  private extractQuery(req: FastifyRequest): Record<string, string> {
+    const query: Record<string, string> = {};
+    const rawQuery = req.query as Record<string, unknown>;
+    if (rawQuery && typeof rawQuery === "object") {
+      for (const [key, value] of Object.entries(rawQuery)) {
+        if (typeof value === "string") {
+          query[key] = value;
+        }
+      }
+    }
+    return query;
   }
 }

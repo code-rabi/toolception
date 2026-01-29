@@ -17,7 +17,13 @@ export type {
   ModuleLoader,
   PermissionConfig,
   CreatePermissionBasedMcpServerOptions,
+  SessionContextConfig,
+  SessionRequestContext,
 } from "./types/index.js";
+
+// Session context support
+export { SessionContextResolver } from "./session/SessionContextResolver.js";
+export type { SessionContextResult } from "./session/SessionContextResolver.js";
 
 // Custom endpoint support
 export type {

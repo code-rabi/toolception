@@ -76,3 +76,39 @@ export function parseToolResponse<T = any>(callToolResponse: any): T {
   const text = extractTextContent(callToolResponse);
   return JSON.parse(text) as T;
 }
+
+/**
+ * Catalog for session context tests - uses module loaders to access context
+ */
+export const sessionContextCatalog: ToolSetCatalog = {
+  tenant: {
+    name: "Tenant Tools",
+    description: "Tools that use session context",
+    modules: ["tenant"],
+  },
+};
+
+/**
+ * Module loaders for session context tests - captures context values
+ */
+export const sessionContextModuleLoaders = {
+  tenant: async (ctx: any) => [
+    {
+      name: "get_context",
+      description: "Returns the current context values",
+      inputSchema: { type: "object", properties: {} },
+      handler: async () => ({
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              API_TOKEN: ctx?.API_TOKEN ?? null,
+              USER_ID: ctx?.USER_ID ?? null,
+              baseValue: ctx?.baseValue ?? null,
+            }),
+          },
+        ],
+      }),
+    },
+  ],
+};

@@ -3,6 +3,7 @@ import type {
   ExposurePolicy,
   Mode,
   ModuleLoader,
+  SessionContextConfig,
   ToolSetCatalog,
 } from "../types/index.js";
 import { ServerOrchestrator } from "../core/ServerOrchestrator.js";
@@ -10,6 +11,8 @@ import {
   FastifyTransport,
   type FastifyTransportOptions,
 } from "../http/FastifyTransport.js";
+import { SessionContextResolver } from "../session/SessionContextResolver.js";
+import { validateSessionContextConfig } from "../session/validateSessionContextConfig.js";
 import { z } from "zod";
 
 export interface CreateMcpServerOptions {
@@ -27,6 +30,25 @@ export interface CreateMcpServerOptions {
    */
   createServer: () => McpServer;
   configSchema?: object;
+  /**
+   * Optional per-session context configuration.
+   * Enables extracting context from query parameters and merging with base context
+   * on a per-request basis. Useful for multi-tenant scenarios.
+   *
+   * @example
+   * ```typescript
+   * sessionContext: {
+   *   enabled: true,
+   *   queryParam: {
+   *     name: 'config',
+   *     encoding: 'base64',
+   *     allowedKeys: ['API_TOKEN', 'USER_ID'],
+   *   },
+   *   merge: 'shallow',
+   * }
+   * ```
+   */
+  sessionContext?: SessionContextConfig;
 }
 
 /**
@@ -58,6 +80,21 @@ export async function createMcpServer(options: CreateMcpServerOptions) {
   }
 
   const mode: Exclude<Mode, "ALL"> = options.startup?.mode ?? "DYNAMIC";
+
+  // Validate session context configuration if provided
+  let sessionContextResolver: SessionContextResolver | undefined;
+  if (options.sessionContext) {
+    validateSessionContextConfig(options.sessionContext);
+    sessionContextResolver = new SessionContextResolver(options.sessionContext);
+
+    // Warn if sessionContext is used with STATIC mode (limited effect)
+    if (mode === "STATIC" && options.sessionContext.enabled !== false) {
+      console.warn(
+        "sessionContext has limited effect in STATIC mode: all clients share the same server instance with base context. " +
+          "Use DYNAMIC mode for per-session context isolation."
+      );
+    }
+  }
   if (typeof options.createServer !== "function") {
     throw new Error("createMcpServer: `createServer` (factory) is required");
   }
@@ -122,9 +159,13 @@ export async function createMcpServer(options: CreateMcpServerOptions) {
 
   const transport = new FastifyTransport(
     orchestrator.getManager(),
-    () => {
+    (mergedContext?: unknown) => {
       // Create a server + orchestrator bundle
       // for a new client when needed
+      // Use merged context if provided (from session context resolver),
+      // otherwise fall back to base context
+      const effectiveContext = mergedContext ?? options.context;
+
       if (mode === "STATIC") {
         // Reuse the base server and orchestrator to avoid duplicate registrations
         return { server: baseServer, orchestrator };
@@ -135,7 +176,7 @@ export async function createMcpServer(options: CreateMcpServerOptions) {
         catalog: options.catalog,
         moduleLoaders: options.moduleLoaders,
         exposurePolicy: options.exposurePolicy,
-        context: options.context,
+        context: effectiveContext,
         notifyToolsListChanged: async () => notifyToolsChanged(createdServer),
         startup: options.startup,
         registerMetaTools:
@@ -146,7 +187,9 @@ export async function createMcpServer(options: CreateMcpServerOptions) {
       return { server: createdServer, orchestrator: createdOrchestrator };
     },
     options.http,
-    options.configSchema
+    options.configSchema,
+    sessionContextResolver,
+    options.context
   );
 
   return {

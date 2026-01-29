@@ -9,6 +9,8 @@ import {
   extractToolNames,
   extractTextContent,
   parseToolResponse,
+  sessionContextCatalog,
+  sessionContextModuleLoaders,
 } from "./helpers.js";
 
 describe("DYNAMIC mode E2E", () => {
@@ -278,5 +280,265 @@ describe("DYNAMIC mode E2E", () => {
 
     await client1.close();
     await client2.close();
+  });
+});
+
+describe("DYNAMIC mode with session context E2E", () => {
+  let server: Awaited<ReturnType<typeof createMcpServer>>;
+  let port: number;
+
+  beforeAll(async () => {
+    port = await getAvailablePort();
+    server = await createMcpServer({
+      createServer: () =>
+        new McpServer(
+          {
+            name: "test-session-context",
+            version: "1.0.0",
+          },
+          { capabilities: { tools: { listChanged: true } } }
+        ),
+      catalog: sessionContextCatalog,
+      moduleLoaders: sessionContextModuleLoaders,
+      context: { baseValue: "shared" },
+      sessionContext: {
+        enabled: true,
+        queryParam: {
+          name: "config",
+          encoding: "base64",
+          allowedKeys: ["API_TOKEN", "USER_ID"],
+        },
+        merge: "shallow",
+      },
+      startup: { mode: "DYNAMIC" },
+      http: { port },
+    });
+    await server.start();
+  });
+
+  afterAll(async () => {
+    await server.close();
+  });
+
+  it("passes session context to module loaders via query param", async () => {
+    const sessionConfig = { API_TOKEN: "secret-token-123", USER_ID: "user-42" };
+    const configBase64 = Buffer.from(JSON.stringify(sessionConfig)).toString(
+      "base64"
+    );
+
+    const transport = new StreamableHTTPClientTransport(
+      new URL(`http://localhost:${port}/mcp?config=${configBase64}`),
+      { requestInit: { headers: { "mcp-client-id": "session-client-1" } } }
+    );
+    const client = new Client({ name: "test", version: "1.0.0" });
+
+    await client.connect(transport);
+
+    // Enable the tenant toolset
+    await client.callTool({
+      name: "enable_toolset",
+      arguments: { name: "tenant" },
+    } as any);
+
+    // Call get_context to verify context was passed
+    const result = await client.callTool({
+      name: "tenant.get_context",
+      arguments: {},
+    } as any);
+
+    const context = parseToolResponse<{
+      API_TOKEN: string;
+      USER_ID: string;
+      baseValue: string;
+    }>(result);
+
+    expect(context.API_TOKEN).toBe("secret-token-123");
+    expect(context.USER_ID).toBe("user-42");
+    expect(context.baseValue).toBe("shared");
+
+    await client.close();
+  });
+
+  it("merges session context with base context", async () => {
+    const sessionConfig = { API_TOKEN: "another-token" };
+    const configBase64 = Buffer.from(JSON.stringify(sessionConfig)).toString(
+      "base64"
+    );
+
+    const transport = new StreamableHTTPClientTransport(
+      new URL(`http://localhost:${port}/mcp?config=${configBase64}`),
+      { requestInit: { headers: { "mcp-client-id": "session-client-2" } } }
+    );
+    const client = new Client({ name: "test", version: "1.0.0" });
+
+    await client.connect(transport);
+
+    await client.callTool({
+      name: "enable_toolset",
+      arguments: { name: "tenant" },
+    } as any);
+
+    const result = await client.callTool({
+      name: "tenant.get_context",
+      arguments: {},
+    } as any);
+
+    const context = parseToolResponse<{
+      API_TOKEN: string;
+      USER_ID: string | null;
+      baseValue: string;
+    }>(result);
+
+    // Session config provides API_TOKEN
+    expect(context.API_TOKEN).toBe("another-token");
+    // USER_ID not in session config, should be null
+    expect(context.USER_ID).toBeNull();
+    // Base context is preserved
+    expect(context.baseValue).toBe("shared");
+
+    await client.close();
+  });
+
+  it("filters disallowed keys from session config", async () => {
+    const sessionConfig = {
+      API_TOKEN: "valid-token",
+      FORBIDDEN_KEY: "should-not-appear",
+      USER_ID: "user-99",
+    };
+    const configBase64 = Buffer.from(JSON.stringify(sessionConfig)).toString(
+      "base64"
+    );
+
+    const transport = new StreamableHTTPClientTransport(
+      new URL(`http://localhost:${port}/mcp?config=${configBase64}`),
+      { requestInit: { headers: { "mcp-client-id": "session-client-3" } } }
+    );
+    const client = new Client({ name: "test", version: "1.0.0" });
+
+    await client.connect(transport);
+
+    await client.callTool({
+      name: "enable_toolset",
+      arguments: { name: "tenant" },
+    } as any);
+
+    const result = await client.callTool({
+      name: "tenant.get_context",
+      arguments: {},
+    } as any);
+
+    const context = parseToolResponse<{
+      API_TOKEN: string;
+      USER_ID: string;
+      baseValue: string;
+    }>(result);
+
+    // Allowed keys are present
+    expect(context.API_TOKEN).toBe("valid-token");
+    expect(context.USER_ID).toBe("user-99");
+    // Base context is preserved
+    expect(context.baseValue).toBe("shared");
+    // FORBIDDEN_KEY is not in the response (filtered by allowedKeys)
+
+    await client.close();
+  });
+
+  it("uses base context when no session config provided", async () => {
+    const transport = new StreamableHTTPClientTransport(
+      new URL(`http://localhost:${port}/mcp`),
+      { requestInit: { headers: { "mcp-client-id": "session-client-4" } } }
+    );
+    const client = new Client({ name: "test", version: "1.0.0" });
+
+    await client.connect(transport);
+
+    await client.callTool({
+      name: "enable_toolset",
+      arguments: { name: "tenant" },
+    } as any);
+
+    const result = await client.callTool({
+      name: "tenant.get_context",
+      arguments: {},
+    } as any);
+
+    const context = parseToolResponse<{
+      API_TOKEN: string | null;
+      USER_ID: string | null;
+      baseValue: string;
+    }>(result);
+
+    // No session config, so API_TOKEN and USER_ID are null
+    expect(context.API_TOKEN).toBeNull();
+    expect(context.USER_ID).toBeNull();
+    // Base context is still available
+    expect(context.baseValue).toBe("shared");
+
+    await client.close();
+  });
+
+  it("different clients with different session configs get isolated contexts", async () => {
+    // Client A with token A
+    const configA = { API_TOKEN: "token-A", USER_ID: "user-A" };
+    const configBase64A = Buffer.from(JSON.stringify(configA)).toString(
+      "base64"
+    );
+    const transportA = new StreamableHTTPClientTransport(
+      new URL(`http://localhost:${port}/mcp?config=${configBase64A}`),
+      { requestInit: { headers: { "mcp-client-id": "isolated-client-A" } } }
+    );
+    const clientA = new Client({ name: "test", version: "1.0.0" });
+    await clientA.connect(transportA);
+
+    // Client B with token B
+    const configB = { API_TOKEN: "token-B", USER_ID: "user-B" };
+    const configBase64B = Buffer.from(JSON.stringify(configB)).toString(
+      "base64"
+    );
+    const transportB = new StreamableHTTPClientTransport(
+      new URL(`http://localhost:${port}/mcp?config=${configBase64B}`),
+      { requestInit: { headers: { "mcp-client-id": "isolated-client-B" } } }
+    );
+    const clientB = new Client({ name: "test", version: "1.0.0" });
+    await clientB.connect(transportB);
+
+    // Enable toolset for both
+    await clientA.callTool({
+      name: "enable_toolset",
+      arguments: { name: "tenant" },
+    } as any);
+    await clientB.callTool({
+      name: "enable_toolset",
+      arguments: { name: "tenant" },
+    } as any);
+
+    // Get context for client A
+    const resultA = await clientA.callTool({
+      name: "tenant.get_context",
+      arguments: {},
+    } as any);
+    const contextA = parseToolResponse<{
+      API_TOKEN: string;
+      USER_ID: string;
+    }>(resultA);
+
+    // Get context for client B
+    const resultB = await clientB.callTool({
+      name: "tenant.get_context",
+      arguments: {},
+    } as any);
+    const contextB = parseToolResponse<{
+      API_TOKEN: string;
+      USER_ID: string;
+    }>(resultB);
+
+    // Each client should have their own context
+    expect(contextA.API_TOKEN).toBe("token-A");
+    expect(contextA.USER_ID).toBe("user-A");
+    expect(contextB.API_TOKEN).toBe("token-B");
+    expect(contextB.USER_ID).toBe("user-B");
+
+    await clientA.close();
+    await clientB.close();
   });
 });
