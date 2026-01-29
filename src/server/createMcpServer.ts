@@ -79,14 +79,22 @@ export async function createMcpServer(options: CreateMcpServerOptions) {
     }
   }
 
+  const mode: Exclude<Mode, "ALL"> = options.startup?.mode ?? "DYNAMIC";
+
   // Validate session context configuration if provided
   let sessionContextResolver: SessionContextResolver | undefined;
   if (options.sessionContext) {
     validateSessionContextConfig(options.sessionContext);
     sessionContextResolver = new SessionContextResolver(options.sessionContext);
-  }
 
-  const mode: Exclude<Mode, "ALL"> = options.startup?.mode ?? "DYNAMIC";
+    // Warn if sessionContext is used with STATIC mode (limited effect)
+    if (mode === "STATIC" && options.sessionContext.enabled !== false) {
+      console.warn(
+        "sessionContext has limited effect in STATIC mode: all clients share the same server instance with base context. " +
+          "Use DYNAMIC mode for per-session context isolation."
+      );
+    }
+  }
   if (typeof options.createServer !== "function") {
     throw new Error("createMcpServer: `createServer` (factory) is required");
   }

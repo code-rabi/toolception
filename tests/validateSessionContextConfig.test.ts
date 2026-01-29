@@ -109,6 +109,35 @@ describe("validateSessionContextConfig", () => {
     });
   });
 
+  describe("invalid enabled field", () => {
+    it("throws when enabled is a string", () => {
+      const config = {
+        enabled: "true",
+      } as any;
+      expect(() => validateSessionContextConfig(config)).toThrow(
+        "enabled must be a boolean"
+      );
+    });
+
+    it("throws when enabled is a number", () => {
+      const config = {
+        enabled: 1,
+      } as any;
+      expect(() => validateSessionContextConfig(config)).toThrow(
+        "enabled must be a boolean"
+      );
+    });
+
+    it("throws when enabled is null", () => {
+      const config = {
+        enabled: null,
+      } as any;
+      expect(() => validateSessionContextConfig(config)).toThrow(
+        "enabled must be a boolean"
+      );
+    });
+  });
+
   describe("invalid queryParam configuration", () => {
     it("throws when queryParam is not an object", () => {
       const config = {

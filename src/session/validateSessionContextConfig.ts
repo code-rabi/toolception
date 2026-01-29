@@ -9,6 +9,7 @@ import type { SessionContextConfig } from "../types/index.js";
  */
 export function validateSessionContextConfig(config: SessionContextConfig): void {
   validateConfigExists(config);
+  validateEnabledField(config);
   validateQueryParamConfig(config);
   validateContextResolver(config);
   validateMergeStrategy(config);
@@ -25,6 +26,25 @@ function validateConfigExists(config: SessionContextConfig): void {
   if (!config || typeof config !== "object") {
     throw new Error(
       "Session context configuration must be an object"
+    );
+  }
+}
+
+/**
+ * Validates the enabled field if provided.
+ *
+ * @param config - The session context configuration to validate
+ * @throws {Error} If enabled is not a boolean
+ * @private
+ */
+function validateEnabledField(config: SessionContextConfig): void {
+  if (config.enabled === undefined) {
+    return;
+  }
+
+  if (typeof config.enabled !== "boolean") {
+    throw new Error(
+      `enabled must be a boolean, got ${typeof config.enabled}`
     );
   }
 }
