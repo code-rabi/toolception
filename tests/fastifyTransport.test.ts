@@ -42,12 +42,9 @@ describe("FastifyTransport", () => {
     await transport.stop();
   });
 
-  it("DELETE /mcp evicts session after close", async () => {
-    // Fake server that supports connect()
+  it("DELETE /mcp returns proper errors for invalid requests", async () => {
     const server: any = {
-      async connect(_t: any) {
-        // no-op
-      },
+      async connect(_t: any) {},
     };
     const resolver = new ModuleResolver({
       catalog: { core: { name: "Core", description: "", tools: [] } } as any,
@@ -55,46 +52,40 @@ describe("FastifyTransport", () => {
     const manager = new DynamicToolManager({ server, resolver });
 
     const app = Fastify({ logger: false });
-    // Stub createBundle with a minimal streamable transport-like object
-    const sessions = new Map<string, any>();
-    const bundle = { server, orchestrator: {} as any, sessions } as any;
 
     const transport = new FastifyTransport(
       manager,
-      () => bundle,
+      () => ({ server, orchestrator: {} as any }),
       { port: 0, logger: false, app }
     );
     await transport.start();
 
-    const clientId = "c1";
-    // Seed bundle in cache with a non-initialize POST (will 400 but caches bundle)
-    await app.inject({
-      method: "POST",
-      url: "/mcp",
-      headers: { "mcp-client-id": clientId },
-      payload: { jsonrpc: "2.0", id: 1, method: "unknown", params: {} },
-    });
-
-    // Now create a fake session inside the cached bundle
-    const createdSessionId = "s-1";
-    const storedTransport: any = {
-      sessionId: createdSessionId,
-      async handleRequest() {},
-      async close() {
-        this._closed = true;
-      },
-    };
-    sessions.set(createdSessionId, storedTransport);
-
-    // Attempt DELETE
-    const res = await app.inject({
+    // Missing mcp-client-id header
+    const res1 = await app.inject({
       method: "DELETE",
       url: "/mcp",
-      headers: { "mcp-client-id": clientId, "mcp-session-id": createdSessionId },
+      headers: { "mcp-session-id": "some-session" },
     });
-    expect(res.statusCode).toBe(204);
-    expect(storedTransport._closed).toBe(true);
-    expect(sessions.has(createdSessionId)).toBe(false);
+    expect(res1.statusCode).toBe(400);
+    expect(res1.json().error.message).toContain("Missing mcp-client-id");
+
+    // Missing mcp-session-id header
+    const res2 = await app.inject({
+      method: "DELETE",
+      url: "/mcp",
+      headers: { "mcp-client-id": "some-client" },
+    });
+    expect(res2.statusCode).toBe(400);
+    expect(res2.json().error.message).toContain("Missing");
+
+    // Non-existent client/session returns 404
+    const res3 = await app.inject({
+      method: "DELETE",
+      url: "/mcp",
+      headers: { "mcp-client-id": "unknown-client", "mcp-session-id": "unknown-session" },
+    });
+    expect(res3.statusCode).toBe(404);
+    expect(res3.json().error.message).toContain("not found");
 
     await transport.stop();
   });

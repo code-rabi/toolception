@@ -148,12 +148,10 @@ export class FastifyTransport {
         let bundle = useCache ? this.clientCache.get(cacheKey) : null;
         if (!bundle) {
           const created = this.createBundle(mergedContext);
-          const providedSessions = (created as any).sessions;
           bundle = {
             server: created.server,
             orchestrator: created.orchestrator,
-            sessions:
-              providedSessions instanceof Map ? providedSessions : new Map(),
+            sessions: new Map(),
           };
           if (useCache) this.clientCache.set(cacheKey, bundle);
         }
