@@ -35,6 +35,38 @@ npm run dev:server-demo
 npm run dev:client-demo
 ```
 
+## Intent Layer Navigation
+
+Read the relevant Intent Node before working in that area:
+
+- `src/types/CLAUDE.md` - Type definitions and contracts
+- `src/core/CLAUDE.md` - ServerOrchestrator, DynamicToolManager, ToolRegistry
+- `src/mode/CLAUDE.md` - ModuleResolver, validation utilities
+- `src/server/CLAUDE.md` - createMcpServer, createPermissionBasedMcpServer
+- `src/http/CLAUDE.md` - FastifyTransport, endpoints, SSE
+- `src/session/CLAUDE.md` - SessionContextResolver, ClientResourceCache
+- `src/permissions/CLAUDE.md` - PermissionResolver, access control
+
+### Maintaining the Intent Layer
+
+**AI agents working in this codebase must keep Intent Nodes up to date.** When you:
+
+- **Add a new invariant** → Document it in the relevant Intent Node
+- **Change component behavior** → Update the affected Intent Node's description
+- **Add new components** → Add them to the Key Components section
+- **Discover an anti-pattern** → Add it to the Anti-patterns section
+- **Create a new module** → Create a corresponding `CLAUDE.md` Intent Node
+
+Intent Nodes should remain concise (~100 lines max). Focus on what an agent needs to know to work safely in that area.
+
+## Critical Invariants
+
+1. **All tools → ToolRegistry** - Collision detection happens here only
+2. **Disable ≠ Unregister** - MCP SDK limitation; disabled tools remain callable
+3. **STATIC + sessionContext** - Session context ignored in STATIC mode
+4. **Fail-secure** - Invalid inputs return empty objects, not errors
+5. **Silent module failures** - Toolsets activate with partial tools if loaders fail
+
 ## Architecture
 
 ### Core Components

@@ -1,0 +1,105 @@
+# HTTP Module
+
+## Purpose
+
+Provides Fastify-based HTTP transport for the MCP protocol. Handles SSE streams, JSON-RPC requests, and per-client server management.
+
+## Key Components
+
+**FastifyTransport** (`FastifyTransport.ts`)
+- Main HTTP transport using Fastify
+- Per-client bundles via ClientResourceCache
+- Optional SessionContextResolver for context differentiation
+
+**Custom Endpoints** (`customEndpoints.ts`, `endpointRegistration.ts`)
+- Type-safe endpoint definitions with Zod schemas
+- `defineEndpoint()` / `definePermissionAwareEndpoint()` helpers
+- Automatic request/response validation
+
+## Endpoints
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/healthz` | Health check → `{ok: true}` |
+| GET | `/tools` | Default manager status |
+| GET | `/.well-known/mcp-config` | Config schema discovery |
+| POST | `/mcp` | JSON-RPC requests (initialize, method calls) |
+| GET | `/mcp` | SSE streaming for notifications |
+| DELETE | `/mcp` | Session termination |
+
+## Invariants
+
+1. **Anonymous clients get `anon-` prefix** - Generated as `anon-${UUID}`, not cached
+2. **Session created on POST /mcp initialize** - Tracked in `bundle.sessions` Map
+3. **Cache key format** - `${clientId}:${contextHash}` when session context differs
+4. **Reserved paths cannot be overridden** - `/mcp`, `/healthz`, `/tools`, `/.well-known/mcp-config`
+
+## Request Extraction
+
+```typescript
+// Headers normalized to lowercase
+headers: Record<string, string>
+
+// Query params filtered to string values
+query: Record<string, string>
+
+// Client ID from header or auto-generated
+clientId: headers['mcp-client-id'] ?? `anon-${uuid()}`
+```
+
+## Session Lifecycle
+
+```
+1. POST /mcp (initialize)
+   → Create StreamableHTTPServerTransport
+   → Generate session ID
+   → Store in bundle.sessions
+
+2. GET /mcp (streaming)
+   → Require mcp-session-id header
+   → Delegate to transport.handleRequest()
+   → Maintain SSE connection
+
+3. POST /mcp (subsequent)
+   → Use existing session
+   → Route JSON-RPC through transport
+
+4. DELETE /mcp (cleanup)
+   → Remove session from bundle
+   → Close transport
+```
+
+## Custom Endpoint Registration
+
+```typescript
+// Standard endpoint
+defineEndpoint({
+  path: '/my-endpoint',
+  method: 'POST',
+  body: z.object({ data: z.string() }),
+  handler: async (req, manager) => ({ result: 'ok' })
+})
+
+// Permission-aware (includes allowedToolsets, failedToolsets)
+definePermissionAwareEndpoint({...})
+```
+
+## Anti-patterns
+
+- Registering endpoints on reserved paths (throws)
+- Assuming client IDs persist (anonymous regenerated each request)
+- Blocking on SSE handlers (should be async)
+
+## Dependencies
+
+- Imports: `src/types`, `src/core`, `src/session`
+- Used by: `src/server/createMcpServer`
+
+## See Also
+
+- `src/session/CLAUDE.md` - SessionContextResolver, ClientResourceCache
+- `src/permissions/CLAUDE.md` - PermissionAwareFastifyTransport
+- `src/server/CLAUDE.md` - How transport is configured
+
+---
+*Keep this Intent Node updated when modifying HTTP transport. See root CLAUDE.md for maintenance guidelines.*
