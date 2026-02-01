@@ -38,18 +38,21 @@ Central orchestration layer that wires together all components. Manages toolset 
 
 Located in `src/meta/registerMetaTools.ts` (called by ServerOrchestrator):
 
+Meta-tools are registered with `ToolRegistry` under the reserved `_meta` toolset key (`META_TOOLSET_KEY` constant). This ensures collision detection with user-defined tools and makes meta-tools visible in `toolRegistry.list()` and `toolRegistry.listByToolset()`.
+
 **DYNAMIC mode only:**
 - `enable_toolset` / `disable_toolset` - Runtime toolset management
 - `list_toolsets` / `describe_toolset` - Discovery
 
 **Both modes:**
-- `list_tools` - List registered tool names
+- `list_tools` - List registered tool names (includes meta-tools)
 
 ## Anti-patterns
 
-- Bypassing ToolRegistry for tool registration (causes collision issues)
+- Bypassing ToolRegistry for tool registration (causes collision issues with meta-tools and user tools)
 - Expecting disable to unregister tools from MCP (it can't)
 - Throwing on notification failures (they're expected in SSE disconnect)
+- Defining user tools with meta-tool names (`enable_toolset`, `disable_toolset`, `list_toolsets`, `describe_toolset`, `list_tools`) - will cause E_TOOL_NAME_CONFLICT
 
 ## Enable Toolset Flow
 
