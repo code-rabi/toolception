@@ -5,6 +5,12 @@ import type {
   ModuleLoader,
 } from "../types/index.js";
 
+/**
+ * Reserved toolset keys that cannot be used in user catalogs.
+ * Must match META_TOOLSET_KEY in src/meta/registerMetaTools.ts
+ */
+const RESERVED_TOOLSET_KEYS = ["_meta"];
+
 export interface ModuleResolverOptions {
   catalog: ToolSetCatalog;
   moduleLoaders?: Record<string, ModuleLoader>;
@@ -15,6 +21,14 @@ export class ModuleResolver {
   private readonly moduleLoaders: Record<string, ModuleLoader>;
 
   constructor(options: ModuleResolverOptions) {
+    // Validate catalog doesn't use reserved keys
+    for (const key of RESERVED_TOOLSET_KEYS) {
+      if (key in options.catalog) {
+        throw new Error(
+          `Toolset key '${key}' is reserved for internal use and cannot be used in the catalog`
+        );
+      }
+    }
     this.catalog = options.catalog;
     this.moduleLoaders = options.moduleLoaders ?? {};
   }
@@ -47,6 +61,13 @@ export class ModuleResolver {
         error: `Empty toolset name provided. Available toolsets: ${this.getAvailableToolsets().join(
           ", "
         )}`,
+      };
+    }
+    // Check for reserved keys (defense in depth)
+    if (RESERVED_TOOLSET_KEYS.includes(sanitized)) {
+      return {
+        isValid: false,
+        error: `Toolset key '${sanitized}' is reserved for internal use`,
       };
     }
     if (!this.catalog[sanitized]) {

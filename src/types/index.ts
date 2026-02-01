@@ -53,7 +53,6 @@ export type ToolingErrorCode =
   | "E_NOTIFY_FAILED"
   | "E_INTERNAL";
 
-// Module loader API: returns tools contributed by a module
 // Module loader API: returns tools contributed by a module.
 // Loaders may ignore the context argument if not needed.
 export type ModuleLoader = (

@@ -49,10 +49,10 @@ Meta-tools are registered with `ToolRegistry` under the reserved `_meta` toolset
 
 ## Anti-patterns
 
-- Bypassing ToolRegistry for tool registration (causes collision issues with meta-tools and user tools)
+- Bypassing ToolRegistry for tool registration (causes collision issues)
 - Expecting disable to unregister tools from MCP (it can't)
 - Throwing on notification failures (they're expected in SSE disconnect)
-- Defining user tools with meta-tool names (`enable_toolset`, `disable_toolset`, `list_toolsets`, `describe_toolset`, `list_tools`) - will cause E_TOOL_NAME_CONFLICT
+- Using `_meta` as a toolset key in the catalog (reserved for meta-tools, rejected at startup)
 
 ## Enable Toolset Flow
 
