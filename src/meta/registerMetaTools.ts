@@ -2,6 +2,14 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { Mode } from "../types/index.js";
 import { z } from "zod";
 import { DynamicToolManager } from "../core/DynamicToolManager.js";
+import { ToolRegistry } from "../core/ToolRegistry.js";
+
+/**
+ * Reserved toolset key for meta-tools.
+ * Meta-tools are registered under this key to enable collision detection
+ * and tracking via the ToolRegistry.
+ */
+export const META_TOOLSET_KEY = "_meta";
 
 /**
  * Registers meta-tools on the MCP server for toolset management.
@@ -13,19 +21,26 @@ import { DynamicToolManager } from "../core/DynamicToolManager.js";
  *
  * In STATIC mode, only list_tools is registered since toolsets are fixed at startup.
  *
+ * Meta-tools are registered with the ToolRegistry under the reserved "_meta" toolset key
+ * to enable collision detection with user-defined tools.
+ *
  * @param server - The MCP server to register tools on
  * @param manager - The DynamicToolManager instance
+ * @param toolRegistry - The ToolRegistry for collision detection
  * @param options - Configuration options including the mode
  */
 export function registerMetaTools(
   server: McpServer,
   manager: DynamicToolManager,
+  toolRegistry: ToolRegistry,
   options?: { mode?: Exclude<Mode, "ALL"> }
 ): void {
   const mode = options?.mode ?? "DYNAMIC";
 
   // Dynamic-mode only tools: enable/disable toolsets at runtime
   if (mode === "DYNAMIC") {
+    // Register with ToolRegistry for collision detection before server.tool()
+    toolRegistry.addForToolset(META_TOOLSET_KEY, "enable_toolset");
     server.tool(
       "enable_toolset",
       "Enable a toolset by name",
@@ -39,6 +54,7 @@ export function registerMetaTools(
       }
     );
 
+    toolRegistry.addForToolset(META_TOOLSET_KEY, "disable_toolset");
     server.tool(
       "disable_toolset",
       "Disable a toolset by name (state only)",
@@ -52,6 +68,7 @@ export function registerMetaTools(
       }
     );
 
+    toolRegistry.addForToolset(META_TOOLSET_KEY, "list_toolsets");
     server.tool(
       "list_toolsets",
       "List available toolsets with active status and definitions",
@@ -84,6 +101,7 @@ export function registerMetaTools(
       }
     );
 
+    toolRegistry.addForToolset(META_TOOLSET_KEY, "describe_toolset");
     server.tool(
       "describe_toolset",
       "Describe a toolset with definition, active status and tools",
@@ -121,6 +139,7 @@ export function registerMetaTools(
   }
 
   // list_tools is available in both modes
+  toolRegistry.addForToolset(META_TOOLSET_KEY, "list_tools");
   server.tool(
     "list_tools",
     "List currently registered tool names (best effort)",

@@ -158,4 +158,36 @@ describe("ModuleResolver", () => {
       expect(tools.map((t) => t.name)).toContain("sync_tool");
     });
   });
+
+  describe("reserved toolset keys", () => {
+    it("throws when catalog contains _meta key", () => {
+      expect(() => new ModuleResolver({
+        catalog: {
+          _meta: { name: "Meta", description: "User-defined meta", tools: [] },
+        } as any,
+      })).toThrow(/reserved for internal use/);
+    });
+
+    it("validateToolsetName rejects _meta as reserved", () => {
+      const r = new ModuleResolver({
+        catalog: { core: { name: "Core", description: "", tools: [] } } as any,
+      });
+
+      const result = r.validateToolsetName("_meta");
+      expect(result.isValid).toBe(false);
+      expect(result.error).toMatch(/reserved for internal use/);
+    });
+
+    it("allows normal toolset keys", () => {
+      const r = new ModuleResolver({
+        catalog: {
+          core: { name: "Core", description: "", tools: [] },
+          "my-toolset": { name: "My Toolset", description: "", tools: [] },
+        } as any,
+      });
+
+      expect(r.validateToolsetName("core").isValid).toBe(true);
+      expect(r.validateToolsetName("my-toolset").isValid).toBe(true);
+    });
+  });
 });

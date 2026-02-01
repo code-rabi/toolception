@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { registerMetaTools } from "../src/meta/registerMetaTools.js";
+import { registerMetaTools, META_TOOLSET_KEY } from "../src/meta/registerMetaTools.js";
 import { DynamicToolManager } from "../src/core/DynamicToolManager.js";
 import { ModuleResolver } from "../src/mode/ModuleResolver.js";
 import { ToolRegistry } from "../src/core/ToolRegistry.js";
@@ -49,8 +49,8 @@ describe("Meta-tools return formats", () => {
       resolver,
       toolRegistry,
     });
-    registerMetaTools(server, manager, { mode: "DYNAMIC" });
-    return { server, tools, manager };
+    registerMetaTools(server, manager, toolRegistry, { mode: "DYNAMIC" });
+    return { server, tools, manager, toolRegistry };
   }
 
   function findTool(tools: RegisteredTool[], name: string): RegisteredTool | undefined {
@@ -66,7 +66,7 @@ describe("Meta-tools return formats", () => {
   }
 
   describe("list_tools", () => {
-    it("returns { tools: [], toolsetToTools: {} } when no toolsets enabled", async () => {
+    it("returns meta-tools when no user toolsets enabled", async () => {
       const { tools } = createTestSetup();
       const result = await callTool(tools, "list_tools");
 
@@ -74,9 +74,15 @@ describe("Meta-tools return formats", () => {
       expect(result).toHaveProperty("toolsetToTools");
       expect(Array.isArray(result.tools)).toBe(true);
       expect(typeof result.toolsetToTools).toBe("object");
-      // No toolsets enabled, so no user tools (only meta-tools not tracked)
-      expect(result.tools).toEqual([]);
-      expect(result.toolsetToTools).toEqual({});
+      // Meta-tools are now tracked in the registry
+      expect(result.tools).toContain("enable_toolset");
+      expect(result.tools).toContain("disable_toolset");
+      expect(result.tools).toContain("list_toolsets");
+      expect(result.tools).toContain("describe_toolset");
+      expect(result.tools).toContain("list_tools");
+      // Meta-tools appear under _meta key
+      expect(result.toolsetToTools[META_TOOLSET_KEY]).toBeDefined();
+      expect(result.toolsetToTools[META_TOOLSET_KEY]).toContain("list_tools");
     });
 
     it("returns correct structure after enabling toolsets", async () => {
@@ -236,9 +242,10 @@ describe("Meta-tools return formats", () => {
     it("only registers list_tools in STATIC mode", () => {
       const { server, tools } = createFakeMcpServer();
       const resolver = new ModuleResolver({ catalog });
-      const manager = new DynamicToolManager({ server, resolver });
+      const toolRegistry = new ToolRegistry({ namespaceWithToolset: true });
+      const manager = new DynamicToolManager({ server, resolver, toolRegistry });
 
-      registerMetaTools(server, manager, { mode: "STATIC" });
+      registerMetaTools(server, manager, toolRegistry, { mode: "STATIC" });
 
       const toolNames = tools.map((t) => t.name);
       expect(toolNames).toContain("list_tools");
@@ -246,6 +253,80 @@ describe("Meta-tools return formats", () => {
       expect(toolNames).not.toContain("disable_toolset");
       expect(toolNames).not.toContain("list_toolsets");
       expect(toolNames).not.toContain("describe_toolset");
+    });
+
+    it("registers list_tools in ToolRegistry in STATIC mode", () => {
+      const { server } = createFakeMcpServer();
+      const resolver = new ModuleResolver({ catalog });
+      const toolRegistry = new ToolRegistry({ namespaceWithToolset: true });
+      const manager = new DynamicToolManager({ server, resolver, toolRegistry });
+
+      registerMetaTools(server, manager, toolRegistry, { mode: "STATIC" });
+
+      expect(toolRegistry.has("list_tools")).toBe(true);
+      expect(toolRegistry.listByToolset()[META_TOOLSET_KEY]).toContain("list_tools");
+    });
+  });
+
+  describe("ToolRegistry integration", () => {
+    it("meta-tools appear in toolRegistry.list()", () => {
+      const { toolRegistry } = createTestSetup();
+
+      const registeredTools = toolRegistry.list();
+      expect(registeredTools).toContain("enable_toolset");
+      expect(registeredTools).toContain("disable_toolset");
+      expect(registeredTools).toContain("list_toolsets");
+      expect(registeredTools).toContain("describe_toolset");
+      expect(registeredTools).toContain("list_tools");
+    });
+
+    it("meta-tools appear in toolRegistry.listByToolset() under _meta key", () => {
+      const { toolRegistry } = createTestSetup();
+
+      const byToolset = toolRegistry.listByToolset();
+      expect(byToolset[META_TOOLSET_KEY]).toBeDefined();
+      expect(byToolset[META_TOOLSET_KEY]).toContain("enable_toolset");
+      expect(byToolset[META_TOOLSET_KEY]).toContain("disable_toolset");
+      expect(byToolset[META_TOOLSET_KEY]).toContain("list_toolsets");
+      expect(byToolset[META_TOOLSET_KEY]).toContain("describe_toolset");
+      expect(byToolset[META_TOOLSET_KEY]).toContain("list_tools");
+    });
+
+    it("returns collision error when user tool collides with meta-tool", async () => {
+      const { server } = createFakeMcpServer();
+      const toolRegistry = new ToolRegistry({ namespaceWithToolset: false }); // No namespacing to force collision
+      const resolver = new ModuleResolver({
+        catalog: {
+          conflict: {
+            name: "Conflict",
+            description: "Toolset with conflicting tool name",
+            tools: [
+              {
+                name: "enable_toolset", // Collides with meta-tool
+                description: "A user tool",
+                inputSchema: { type: "object", properties: {} },
+                handler: async () => ({ content: [{ type: "text", text: "user" }] }),
+              },
+            ],
+          },
+        },
+      });
+      const manager = new DynamicToolManager({ server, resolver, toolRegistry });
+
+      // Register meta-tools first
+      registerMetaTools(server, manager, toolRegistry, { mode: "DYNAMIC" });
+
+      // Enabling a toolset with a conflicting tool name returns failure with collision message
+      const result = await manager.enableToolset("conflict");
+      expect(result.success).toBe(false);
+      expect(result.message).toMatch(/collision/i);
+    });
+
+    it("cannot register tool named enable_toolset after meta-tools registered", () => {
+      const { toolRegistry } = createTestSetup();
+
+      // Attempting to add a tool with the same name should throw
+      expect(() => toolRegistry.add("enable_toolset")).toThrow(/collision/i);
     });
   });
 });

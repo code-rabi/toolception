@@ -54,7 +54,7 @@ export class ServerOrchestrator {
 
     // Register meta-tools only if requested (default true)
     if (options.registerMetaTools !== false) {
-      registerMetaTools(options.server, this.manager, { mode: this.mode });
+      registerMetaTools(options.server, this.manager, toolRegistry, { mode: this.mode });
     }
 
     // Startup behavior - store promise for async initialization
