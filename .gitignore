@@ -33,3 +33,6 @@ Thumbs.db
 # Misc
 *.map
 
+# Docs
+docs/
+

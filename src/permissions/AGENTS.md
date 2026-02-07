@@ -83,9 +83,9 @@ Return bundle (cached if non-anonymous)
 
 ## See Also
 
-- `src/http/CLAUDE.md` - FastifyTransport base class
-- `src/server/CLAUDE.md` - createPermissionBasedMcpServer
-- `src/types/CLAUDE.md` - PermissionConfig type
+- `src/http/AGENTS.md` - FastifyTransport base class
+- `src/server/AGENTS.md` - createPermissionBasedMcpServer
+- `src/types/AGENTS.md` - PermissionConfig type
 
 ---
 *Keep this Intent Node updated when modifying permissions. See root CLAUDE.md for maintenance guidelines.*

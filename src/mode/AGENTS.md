@@ -54,8 +54,8 @@ Return flattened McpToolDefinition[]
 
 ## See Also
 
-- `src/core/CLAUDE.md` - How resolved tools are registered
-- `src/types/CLAUDE.md` - ModuleLoader type definition
+- `src/core/AGENTS.md` - How resolved tools are registered
+- `src/types/AGENTS.md` - ModuleLoader type definition
 
 ---
 *Keep this Intent Node updated when modifying mode resolution. See root CLAUDE.md for maintenance guidelines.*

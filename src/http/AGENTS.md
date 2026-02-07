@@ -97,9 +97,9 @@ definePermissionAwareEndpoint({...})
 
 ## See Also
 
-- `src/session/CLAUDE.md` - SessionContextResolver, ClientResourceCache
-- `src/permissions/CLAUDE.md` - PermissionAwareFastifyTransport
-- `src/server/CLAUDE.md` - How transport is configured
+- `src/session/AGENTS.md` - SessionContextResolver, ClientResourceCache
+- `src/permissions/AGENTS.md` - PermissionAwareFastifyTransport
+- `src/server/AGENTS.md` - How transport is configured
 
 ---
 *Keep this Intent Node updated when modifying HTTP transport. See root CLAUDE.md for maintenance guidelines.*
