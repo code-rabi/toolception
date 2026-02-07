@@ -99,9 +99,9 @@ Always STATIC per client, no meta-tools
 
 ## See Also
 
-- `src/core/CLAUDE.md` - ServerOrchestrator internals
-- `src/http/CLAUDE.md` - Transport layer
-- `src/permissions/CLAUDE.md` - Permission resolution
+- `src/core/AGENTS.md` - ServerOrchestrator internals
+- `src/http/AGENTS.md` - Transport layer
+- `src/permissions/AGENTS.md` - Permission resolution
 
 ---
 *Keep this Intent Node updated when modifying server creation. See root CLAUDE.md for maintenance guidelines.*

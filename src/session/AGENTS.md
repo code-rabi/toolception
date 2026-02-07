@@ -69,8 +69,8 @@ Return {context, cacheKeySuffix}
 
 ## See Also
 
-- `src/http/CLAUDE.md` - How session context integrates with HTTP transport
-- `src/types/CLAUDE.md` - SessionContextConfig type definition
+- `src/http/AGENTS.md` - How session context integrates with HTTP transport
+- `src/types/AGENTS.md` - SessionContextConfig type definition
 
 ---
 *Keep this Intent Node updated when modifying session handling. See root CLAUDE.md for maintenance guidelines.*

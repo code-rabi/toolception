@@ -56,7 +56,7 @@ Defines all TypeScript interfaces, types, and contracts for the Toolception syst
 ## See Also
 
 - `src/errors/ToolingError.ts` - Error class using ToolingErrorCode (18 LOC)
-- `src/core/CLAUDE.md` - How types are used in orchestration
+- `src/core/AGENTS.md` - How types are used in orchestration
 
 ---
 *Keep this Intent Node updated when modifying types. See root CLAUDE.md for maintenance guidelines.*

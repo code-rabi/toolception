@@ -81,9 +81,9 @@ notifyToolsChanged() (unless skipNotification)
 
 ## See Also
 
-- `src/mode/CLAUDE.md` - How tools are resolved
-- `src/server/CLAUDE.md` - How orchestrator is created
-- `src/types/CLAUDE.md` - ExposurePolicy, ToolingErrorCode
+- `src/mode/AGENTS.md` - How tools are resolved
+- `src/server/AGENTS.md` - How orchestrator is created
+- `src/types/AGENTS.md` - ExposurePolicy, ToolingErrorCode
 
 ---
 *Keep this Intent Node updated when modifying core orchestration. See root CLAUDE.md for maintenance guidelines.*

@@ -39,13 +39,13 @@ npm run dev:client-demo
 
 Read the relevant Intent Node before working in that area:
 
-- `src/types/CLAUDE.md` - Type definitions and contracts
-- `src/core/CLAUDE.md` - ServerOrchestrator, DynamicToolManager, ToolRegistry
-- `src/mode/CLAUDE.md` - ModuleResolver, validation utilities
-- `src/server/CLAUDE.md` - createMcpServer, createPermissionBasedMcpServer
-- `src/http/CLAUDE.md` - FastifyTransport, endpoints, SSE
-- `src/session/CLAUDE.md` - SessionContextResolver, ClientResourceCache
-- `src/permissions/CLAUDE.md` - PermissionResolver, access control
+- `src/types/AGENTS.md` - Type definitions and contracts
+- `src/core/AGENTS.md` - ServerOrchestrator, DynamicToolManager, ToolRegistry
+- `src/mode/AGENTS.md` - ModuleResolver, validation utilities
+- `src/server/AGENTS.md` - createMcpServer, createPermissionBasedMcpServer
+- `src/http/AGENTS.md` - FastifyTransport, endpoints, SSE
+- `src/session/AGENTS.md` - SessionContextResolver, ClientResourceCache
+- `src/permissions/AGENTS.md` - PermissionResolver, access control
 
 ### Maintaining the Intent Layer
 
@@ -55,7 +55,7 @@ Read the relevant Intent Node before working in that area:
 - **Change component behavior** → Update the affected Intent Node's description
 - **Add new components** → Add them to the Key Components section
 - **Discover an anti-pattern** → Add it to the Anti-patterns section
-- **Create a new module** → Create a corresponding `CLAUDE.md` Intent Node
+- **Create a new module** → Create a corresponding `AGENTS.md` Intent Node
 
 Intent Nodes should remain concise (~100 lines max). Focus on what an agent needs to know to work safely in that area.
 

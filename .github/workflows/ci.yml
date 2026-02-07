@@ -24,7 +24,7 @@ jobs:
         run: npm ci
 
       - name: Security audit
-        run: npm audit
+        run: npm audit --audit-level=critical
 
       - name: Typecheck
         run: npm run typecheck
