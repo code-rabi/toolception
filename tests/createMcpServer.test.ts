@@ -12,6 +12,30 @@ vi.mock("../src/http/FastifyTransport.js", () => {
       }
       async start() {}
       async stop() {}
+      static builder() {
+        let _defaultManager: any;
+        let _createBundle: any;
+        const opts: any = {};
+        let _configSchema: any;
+        let _sessionContextResolver: any;
+        let _baseContext: any;
+        const b = {
+          defaultManager(v: any) { _defaultManager = v; return b; },
+          createBundle(v: any) { _createBundle = v; return b; },
+          host(v: any) { opts.host = v; return b; },
+          port(v: any) { opts.port = v; return b; },
+          basePath(v: any) { opts.basePath = v; return b; },
+          cors(v: any) { opts.cors = v; return b; },
+          logger(v: any) { opts.logger = v; return b; },
+          app(v: any) { opts.app = v; return b; },
+          customEndpoints(v: any) { opts.customEndpoints = v; return b; },
+          configSchema(v: any) { _configSchema = v; return b; },
+          sessionContextResolver(v: any) { _sessionContextResolver = v; return b; },
+          baseContext(v: any) { _baseContext = v; return b; },
+          build() { return new FastifyTransportMock(_defaultManager, _createBundle, opts, _configSchema, _sessionContextResolver, _baseContext); },
+        };
+        return b;
+      }
     },
   };
 });

@@ -2,7 +2,7 @@
 
 // Standard MCP server creation
 export { createMcpServer } from "./server/createMcpServer.js";
-export type { CreateMcpServerOptions } from "./server/server.types.js";
+export type { CreateMcpServerOptions, McpServerHandle } from "./server/server.types.js";
 
 // Permission-based MCP server creation (separate API for per-client toolset access control)
 export { createPermissionBasedMcpServer } from "./server/createPermissionBasedMcpServer.js";

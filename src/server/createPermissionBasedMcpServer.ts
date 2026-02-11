@@ -1,7 +1,9 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type {
   CreatePermissionBasedMcpServerOptions,
+  ExposurePolicy,
 } from "../types/index.js";
+import type { McpServerHandle } from "./server.types.js";
 import {
   validatePermissionConfig,
   createPermissionAwareBundle,
@@ -14,30 +16,67 @@ import { PermissionAwareFastifyTransport } from "../permissions/PermissionAwareF
 
 export async function createPermissionBasedMcpServer(
   options: CreatePermissionBasedMcpServerOptions
-) {
-  // Validate that permissions field is provided
+): Promise<McpServerHandle> {
+  // --- Validate ---
+  validatePermissionOptions(options);
+
+  const sanitizedPolicy = sanitizeExposurePolicyForPermissions(options.exposurePolicy);
+  const permissionResolver = buildPermissionResolver(options);
+
+  // --- Base server & status-only orchestrator ---
+  const baseServer: McpServer = options.createServer();
+  const baseOrchestrator = buildPermissionOrchestrator(baseServer, options, sanitizedPolicy);
+
+  // --- Per-client bundle factory ---
+  const createBundle = createPermissionAwareBundle(
+    createClientOrchestratorFactory(options, sanitizedPolicy),
+    permissionResolver
+  );
+
+  // --- Transport ---
+  const transport = buildPermissionTransport(options, baseOrchestrator.getManager(), createBundle);
+
+  return {
+    server: baseServer,
+    start: () => transport.start(),
+    close: async () => {
+      try {
+        await transport.stop();
+      } finally {
+        permissionResolver.clearCache();
+      }
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Named helper functions
+// ---------------------------------------------------------------------------
+
+/**
+ * Consolidates all upfront validation guards for permission-based servers.
+ *
+ * @param options - Server creation options to validate
+ */
+function validatePermissionOptions(
+  options: CreatePermissionBasedMcpServerOptions
+): void {
   if (!options.permissions) {
     throw new Error(
       "Permission configuration is required for createPermissionBasedMcpServer. " +
         "Please provide a 'permissions' field in the options."
     );
   }
-
-  // Validate permission configuration
   validatePermissionConfig(options.permissions);
 
-  // Validate session context configuration if provided
   if (options.sessionContext) {
     validateSessionContextConfig(options.sessionContext);
-    // Note: Session context is validated but not yet fully implemented
-    // for permission-based servers. The base context is used for module loaders.
     console.warn(
       "Session context support for permission-based servers is limited. " +
         "The base context will be used for module loaders."
     );
   }
 
-  // Prevent startup.mode configuration - permissions determine toolsets
   if ((options as any).startup) {
     throw new Error(
       "Permission-based servers determine toolsets from client permissions. " +
@@ -45,64 +84,95 @@ export async function createPermissionBasedMcpServer(
     );
   }
 
-  // Validate createServer factory is provided
   if (typeof options.createServer !== "function") {
     throw new Error(
       "createPermissionBasedMcpServer: `createServer` (factory) is required"
     );
   }
+}
 
-  // Sanitize exposure policy for permission-based operation
-  const sanitizedPolicy = sanitizeExposurePolicyForPermissions(
-    options.exposurePolicy
-  );
-
-  // Create permission resolver instance
-  const permissionResolver = PermissionResolver.builder()
+/**
+ * Builds a PermissionResolver from the options config.
+ *
+ * @param options - Server creation options containing permission config
+ * @returns A configured PermissionResolver
+ */
+function buildPermissionResolver(
+  options: CreatePermissionBasedMcpServerOptions
+): PermissionResolver {
+  return PermissionResolver.builder()
     .source(options.permissions.source)
     .headerName(options.permissions.headerName ?? "mcp-toolset-permissions")
     .staticMap(options.permissions.staticMap ?? {})
     .resolver(options.permissions.resolver as (clientId: string) => string[])
     .defaultPermissions(options.permissions.defaultPermissions ?? [])
     .build();
+}
 
-  // Create base server for default manager (used for status endpoints)
-  const baseServer: McpServer = options.createServer();
-
-  // Create base orchestrator for default manager (empty toolsets for status endpoint)
-  // No notifier needed - STATIC mode with fixed toolsets per client
-  const baseOrchestrator = ServerOrchestrator.builder()
-    .server(baseServer)
+/**
+ * Builds a ServerOrchestrator configured for permission-based operation
+ * (STATIC mode, empty toolsets, no meta-tools, no notifier).
+ *
+ * @param server - The MCP server instance
+ * @param options - Server creation options (catalog, moduleLoaders, context)
+ * @param policy - Sanitized exposure policy
+ * @returns Orchestrator configured for permission-based operation
+ */
+function buildPermissionOrchestrator(
+  server: McpServer,
+  options: CreatePermissionBasedMcpServerOptions,
+  policy: ExposurePolicy | undefined
+): ServerOrchestrator {
+  const builder = ServerOrchestrator.builder()
+    .server(server)
     .catalog(options.catalog)
     .moduleLoaders(options.moduleLoaders ?? {})
-    .exposurePolicy(sanitizedPolicy!)
     .context(options.context)
     .startup({ mode: "STATIC", toolsets: [] })
-    .registerMetaTools(false)
-    .build();
+    .registerMetaTools(false);
 
-  // Create permission-aware bundle creator
-  const createBundle = createPermissionAwareBundle(
-    (allowedToolsets: string[]) => {
-      // Create fresh server and orchestrator for each client
-      const clientServer: McpServer = options.createServer();
-      const clientOrchestrator = ServerOrchestrator.builder()
-        .server(clientServer)
-        .catalog(options.catalog)
-        .moduleLoaders(options.moduleLoaders ?? {})
-        .exposurePolicy(sanitizedPolicy!)
-        .context(options.context)
-        .startup({ mode: "STATIC", toolsets: [] })
-        .registerMetaTools(false)
-        .build();
-      return { server: clientServer, orchestrator: clientOrchestrator };
-    },
-    permissionResolver
-  );
+  if (policy) {
+    builder.exposurePolicy(policy);
+  }
 
-  // Create permission-aware transport
-  const transportBuilder = PermissionAwareFastifyTransport.builder()
-    .defaultManager(baseOrchestrator.getManager())
+  return builder.build();
+}
+
+/**
+ * Creates the callback that produces a fresh server + orchestrator per client,
+ * scoped to the client's allowed toolsets.
+ *
+ * @param options - Server creation options
+ * @param policy - Sanitized exposure policy
+ * @returns Factory callback that accepts allowed toolsets and returns a server/orchestrator pair
+ */
+function createClientOrchestratorFactory(
+  options: CreatePermissionBasedMcpServerOptions,
+  policy: ExposurePolicy | undefined
+): (allowedToolsets: string[]) => { server: McpServer; orchestrator: ServerOrchestrator } {
+  return (allowedToolsets: string[]) => {
+    const clientServer: McpServer = options.createServer();
+    const clientOrchestrator = buildPermissionOrchestrator(clientServer, options, policy);
+    return { server: clientServer, orchestrator: clientOrchestrator };
+  };
+}
+
+/**
+ * Builds the PermissionAwareFastifyTransport, handling conditional `.app()`
+ * and `.customEndpoints()` chaining.
+ *
+ * @param options - Server creation options (http config)
+ * @param manager - Default DynamicToolManager for status endpoints
+ * @param createBundle - Permission-aware bundle creator
+ * @returns A configured PermissionAwareFastifyTransport
+ */
+function buildPermissionTransport(
+  options: CreatePermissionBasedMcpServerOptions,
+  manager: ReturnType<ServerOrchestrator["getManager"]>,
+  createBundle: ReturnType<typeof createPermissionAwareBundle>
+): PermissionAwareFastifyTransport {
+  const builder = PermissionAwareFastifyTransport.builder()
+    .defaultManager(manager)
     .createPermissionAwareBundle(createBundle)
     .host(options.http?.host ?? "0.0.0.0")
     .port(options.http?.port ?? 3000)
@@ -111,28 +181,11 @@ export async function createPermissionBasedMcpServer(
     .logger(options.http?.logger ?? false);
 
   if (options.http?.app) {
-    transportBuilder.app(options.http.app);
+    builder.app(options.http.app);
   }
   if (options.http?.customEndpoints) {
-    transportBuilder.customEndpoints(options.http.customEndpoints);
+    builder.customEndpoints(options.http.customEndpoints);
   }
 
-  const transport = transportBuilder.build();
-
-  // Return same interface as createMcpServer
-  return {
-    server: baseServer,
-    start: async () => {
-      await transport.start();
-    },
-    close: async () => {
-      try {
-        // Stop the transport (cleans up client contexts)
-        await transport.stop();
-      } finally {
-        // Clear permission cache
-        permissionResolver.clearCache();
-      }
-    },
-  };
+  return builder.build();
 }

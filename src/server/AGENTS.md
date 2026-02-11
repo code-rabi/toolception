@@ -8,13 +8,24 @@ Factory functions for creating MCP servers. Provides standard and permission-bas
 
 **createMcpServer** (`createMcpServer.ts`)
 - Standard server factory supporting DYNAMIC or STATIC modes
-- Returns `{server, start(), close()}`
+- Returns `McpServerHandle` (`{server, start(), close()}`)
 - Supports session context for multi-tenancy
+- Main flow delegates to named helpers: `validateOptions`, `buildSessionContextResolver`, `buildOrchestrator`, `createBundleFactory`, `buildTransport`
 
 **createPermissionBasedMcpServer** (`createPermissionBasedMcpServer.ts`)
 - Permission-controlled server factory
 - Always STATIC mode per client
 - No meta-tools (clients can't change toolsets)
+- Main flow delegates to named helpers: `validatePermissionOptions`, `buildPermissionResolver`, `buildPermissionOrchestrator`, `createClientOrchestratorFactory`, `buildPermissionTransport`
+
+**Shared types** (`server.types.ts`)
+- `CreateMcpServerOptions` — options for standard server
+- `McpServerHandle` — return type for both factories (`{server, start, close}`)
+
+**Shared utilities** (`server.utils.ts`)
+- `validateStartupConfig(startup)` — Zod parse + error formatting
+- `createToolsChangedNotifier()` — encapsulated notifier pattern (type guards as closure)
+- `resolveMetaToolsFlag(explicit, mode)` — meta-tools default: on for DYNAMIC, off for STATIC
 
 ## createMcpServer Options
 
@@ -57,6 +68,7 @@ Factory functions for creating MCP servers. Provides standard and permission-bas
 3. **Permission-based servers ignore startup field** - Throws if `startup` provided
 4. **Permission-based sanitizes exposure policy** - Strips allowlist/denylist/maxActiveToolsets with warnings
 5. **Orchestrator.ensureReady() before start** - STATIC mode waits for initialization
+6. **Orchestrator built via conditional builder calls** - Optional fields (`exposurePolicy`, `startup`) are only passed to the builder when defined; never use `!` to coerce them
 
 ## Mode Selection Logic
 
@@ -91,6 +103,7 @@ Always STATIC per client, no meta-tools
 - Providing `startup` to permission-based server (throws)
 - Expecting allowlist/denylist to work with permission-based (ignored)
 - Not awaiting `start()` before accepting requests
+- Using non-null assertions (`!`) on optional builder params — use conditional calls instead
 
 ## Dependencies
 

@@ -8,6 +8,13 @@ import type {
 } from "../types/index.js";
 import type { FastifyTransportOptions } from "../http/http.types.js";
 
+/** Handle returned by both `createMcpServer` and `createPermissionBasedMcpServer`. */
+export interface McpServerHandle {
+  server: McpServer;
+  start: () => Promise<void>;
+  close: () => Promise<void>;
+}
+
 export interface CreateMcpServerOptions {
   catalog: ToolSetCatalog;
   moduleLoaders?: Record<string, ModuleLoader>;

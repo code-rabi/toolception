@@ -1,155 +1,221 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { Mode } from "../types/index.js";
+import type { CreateBundleCallback } from "../http/http.types.js";
+import type { CreateMcpServerOptions, McpServerHandle } from "./server.types.js";
 import { ServerOrchestrator } from "../core/ServerOrchestrator.js";
-import {
-  FastifyTransport,
-} from "../http/FastifyTransport.js";
+import { FastifyTransport } from "../http/FastifyTransport.js";
 import { SessionContextResolver } from "../session/SessionContextResolver.js";
 import { validateSessionContextConfig } from "../session/session.utils.js";
-import { z } from "zod";
-import type { CreateMcpServerOptions } from "./server.types.js";
-import { startupConfigSchema } from "./server.utils.js";
+import {
+  validateStartupConfig,
+  createToolsChangedNotifier,
+  resolveMetaToolsFlag,
+} from "./server.utils.js";
 
 export type { CreateMcpServerOptions } from "./server.types.js";
 
-export async function createMcpServer(options: CreateMcpServerOptions) {
-  // Validate startup configuration if provided
-  if (options.startup) {
-    try {
-      startupConfigSchema.parse(options.startup);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const formatted = error.format();
-        throw new Error(
-          `Invalid startup configuration:\n${JSON.stringify(formatted, null, 2)}\n\n` +
-            `Hint: Common mistake - use "toolsets" not "initialToolsets"`
-        );
-      }
-      throw error;
-    }
-  }
+export async function createMcpServer(
+  options: CreateMcpServerOptions
+): Promise<McpServerHandle> {
+  // --- Validate ---
+  validateOptions(options);
 
   const mode: Exclude<Mode, "ALL"> = options.startup?.mode ?? "DYNAMIC";
+  const shouldRegisterMetaTools = resolveMetaToolsFlag(options.registerMetaTools, mode);
+  const sessionContextResolver = buildSessionContextResolver(options, mode);
+  const notifyToolsChanged = createToolsChangedNotifier();
 
-  // Validate session context configuration if provided
-  let sessionContextResolver: SessionContextResolver | undefined;
-  if (options.sessionContext) {
-    validateSessionContextConfig(options.sessionContext);
-    sessionContextResolver = SessionContextResolver.builder()
-      .enabled(options.sessionContext.enabled ?? true)
-      .queryParam(options.sessionContext.queryParam)
-      .contextResolver(options.sessionContext.contextResolver)
-      .merge(options.sessionContext.merge ?? "shallow")
-      .build();
-
-    // Warn if sessionContext is used with STATIC mode (limited effect)
-    if (mode === "STATIC" && options.sessionContext.enabled !== false) {
-      console.warn(
-        "sessionContext has limited effect in STATIC mode: all clients share the same server instance with base context. " +
-          "Use DYNAMIC mode for per-session context isolation."
-      );
-    }
-  }
-  if (typeof options.createServer !== "function") {
-    throw new Error("createMcpServer: `createServer` (factory) is required");
-  }
+  // --- Build base server & orchestrator ---
   const baseServer: McpServer = options.createServer();
+  const baseOrchestrator = buildOrchestrator(
+    baseServer, options, mode, shouldRegisterMetaTools, notifyToolsChanged
+  );
 
-  // Typed, guarded notifier
-  type NotifierA = {
-    server: { notification: (msg: { method: string }) => Promise<void> | void };
-  };
-  type NotifierB = { notifyToolsListChanged: () => Promise<void> | void };
-  const hasNotifierA = (s: unknown): s is NotifierA =>
-    typeof (s as NotifierA)?.server?.notification === "function";
-  const hasNotifierB = (s: unknown): s is NotifierB =>
-    typeof (s as NotifierB)?.notifyToolsListChanged === "function";
-
-  const notifyToolsChanged = async (target: unknown) => {
-    try {
-      if (hasNotifierA(target)) {
-        await target.server.notification({
-          method: "notifications/tools/list_changed",
-        });
-        return;
-      }
-      if (hasNotifierB(target)) {
-        await target.notifyToolsListChanged();
-      }
-    } catch (err) {
-      // Suppress "Not connected" errors - expected when no clients are connected
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      if (errorMessage === "Not connected") {
-        return; // Silently ignore - no clients to notify
-      }
-      // Log other errors as they indicate actual problems
-      console.warn("Failed to send tools list changed notification:", err);
-    }
-  };
-
-  const orchestrator = ServerOrchestrator.builder()
-    .server(baseServer)
-    .catalog(options.catalog)
-    .moduleLoaders(options.moduleLoaders ?? {})
-    .exposurePolicy(options.exposurePolicy!)
-    .context(options.context)
-    .notifyToolsListChanged(async () => notifyToolsChanged(baseServer))
-    .startup(options.startup!)
-    .registerMetaTools(
-      options.registerMetaTools !== undefined
-        ? options.registerMetaTools
-        : mode === "DYNAMIC"
-    )
-    .build();
-
-  // In STATIC mode, wait for initialization to complete before starting
   if (mode === "STATIC") {
-    await orchestrator.ensureReady();
+    await baseOrchestrator.ensureReady();
   }
 
-  const transport = new FastifyTransport(
-    orchestrator.getManager(),
-    (mergedContext?: unknown) => {
-      // Create a server + orchestrator bundle
-      // for a new client when needed
-      // Use merged context if provided (from session context resolver),
-      // otherwise fall back to base context
-      const effectiveContext = mergedContext ?? options.context;
-
-      if (mode === "STATIC") {
-        // Reuse the base server and orchestrator to avoid duplicate registrations
-        return { server: baseServer, orchestrator };
-      }
-      const createdServer: McpServer = options.createServer();
-      const createdOrchestrator = ServerOrchestrator.builder()
-        .server(createdServer)
-        .catalog(options.catalog)
-        .moduleLoaders(options.moduleLoaders ?? {})
-        .exposurePolicy(options.exposurePolicy!)
-        .context(effectiveContext)
-        .notifyToolsListChanged(async () => notifyToolsChanged(createdServer))
-        .startup(options.startup!)
-        .registerMetaTools(
-          options.registerMetaTools !== undefined
-            ? options.registerMetaTools
-            : mode === "DYNAMIC"
-        )
-        .build();
-      return { server: createdServer, orchestrator: createdOrchestrator };
-    },
-    options.http,
-    options.configSchema,
-    sessionContextResolver,
-    options.context
+  // --- Build transport ---
+  const bundleFactory = createBundleFactory(
+    options, mode, baseServer, baseOrchestrator, shouldRegisterMetaTools, notifyToolsChanged
+  );
+  const transport = buildTransport(
+    options, baseOrchestrator.getManager(), bundleFactory, sessionContextResolver
   );
 
   return {
     server: baseServer,
-    start: async () => {
-      await transport.start();
-    },
-    close: async () => {
-      await transport.stop();
-    },
+    start: () => transport.start(),
+    close: () => transport.stop(),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Named helper functions
+// ---------------------------------------------------------------------------
+
+/**
+ * Consolidates all upfront validation guards.
+ *
+ * @param options - Server creation options to validate
+ */
+function validateOptions(options: CreateMcpServerOptions): void {
+  if (options.startup) {
+    validateStartupConfig(options.startup);
+  }
+  if (typeof options.createServer !== "function") {
+    throw new Error("createMcpServer: `createServer` (factory) is required");
+  }
+}
+
+/**
+ * Validates session context config, builds the resolver, and warns about
+ * limited utility in STATIC mode.
+ *
+ * @param options - Server creation options containing sessionContext config
+ * @param mode - The resolved server mode
+ * @returns A SessionContextResolver if configured, otherwise undefined
+ */
+function buildSessionContextResolver(
+  options: CreateMcpServerOptions,
+  mode: Exclude<Mode, "ALL">
+): SessionContextResolver | undefined {
+  if (!options.sessionContext) return undefined;
+
+  validateSessionContextConfig(options.sessionContext);
+
+  const resolver = SessionContextResolver.builder()
+    .enabled(options.sessionContext.enabled ?? true)
+    .queryParam(options.sessionContext.queryParam)
+    .contextResolver(options.sessionContext.contextResolver)
+    .merge(options.sessionContext.merge ?? "shallow")
+    .build();
+
+  if (mode === "STATIC" && options.sessionContext.enabled !== false) {
+    console.warn(
+      "sessionContext has limited effect in STATIC mode: all clients share the same server instance with base context. " +
+        "Use DYNAMIC mode for per-session context isolation."
+    );
+  }
+
+  return resolver;
+}
+
+/**
+ * Builds a ServerOrchestrator with the standard configuration. Used once for
+ * the base orchestrator and once per DYNAMIC client.
+ *
+ * @param server - The MCP server instance
+ * @param options - Server creation options (catalog, moduleLoaders, exposurePolicy, startup)
+ * @param mode - The resolved server mode
+ * @param shouldRegisterMetaTools - Pre-resolved meta-tools flag
+ * @param notifyToolsChanged - Notifier function for tool list changes
+ * @param context - Optional context override (defaults to options.context)
+ * @returns A configured ServerOrchestrator
+ */
+function buildOrchestrator(
+  server: McpServer,
+  options: CreateMcpServerOptions,
+  mode: Exclude<Mode, "ALL">,
+  shouldRegisterMetaTools: boolean,
+  notifyToolsChanged: (target: unknown) => Promise<void>,
+  context?: unknown
+): ServerOrchestrator {
+  const builder = ServerOrchestrator.builder()
+    .server(server)
+    .catalog(options.catalog)
+    .moduleLoaders(options.moduleLoaders ?? {})
+    .context(context !== undefined ? context : options.context)
+    .notifyToolsListChanged(async () => notifyToolsChanged(server))
+    .registerMetaTools(shouldRegisterMetaTools);
+
+  if (options.exposurePolicy) {
+    builder.exposurePolicy(options.exposurePolicy);
+  }
+  if (options.startup) {
+    builder.startup(options.startup);
+  }
+
+  return builder.build();
+}
+
+/**
+ * Creates the bundle factory callback for the transport layer.
+ * In STATIC mode all clients share one server + orchestrator.
+ * In DYNAMIC mode a fresh server + orchestrator is created per client.
+ *
+ * @param options - Server creation options
+ * @param mode - STATIC reuses base bundle; DYNAMIC creates fresh per client
+ * @param baseServer - The shared base server instance
+ * @param baseOrchestrator - The shared base orchestrator
+ * @param shouldRegisterMetaTools - Pre-resolved meta-tools flag
+ * @param notifyToolsChanged - Notifier function for tool list changes
+ * @returns Bundle factory callback for the transport layer
+ */
+function createBundleFactory(
+  options: CreateMcpServerOptions,
+  mode: Exclude<Mode, "ALL">,
+  baseServer: McpServer,
+  baseOrchestrator: ServerOrchestrator,
+  shouldRegisterMetaTools: boolean,
+  notifyToolsChanged: (target: unknown) => Promise<void>
+): CreateBundleCallback {
+  return (mergedContext?: unknown) => {
+    if (mode === "STATIC") {
+      // STATIC: all clients share one server + orchestrator
+      return { server: baseServer, orchestrator: baseOrchestrator };
+    }
+
+    // DYNAMIC: fresh server + orchestrator per client
+    const effectiveContext = mergedContext ?? options.context;
+    const clientServer: McpServer = options.createServer();
+    const clientOrchestrator = buildOrchestrator(
+      clientServer, options, mode, shouldRegisterMetaTools, notifyToolsChanged, effectiveContext
+    );
+    return { server: clientServer, orchestrator: clientOrchestrator };
+  };
+}
+
+/**
+ * Builds the FastifyTransport using the builder pattern, handling conditional
+ * `.app()`, `.customEndpoints()`, `.sessionContextResolver()`, and `.baseContext()` chaining.
+ *
+ * @param options - Server creation options (http, configSchema, context)
+ * @param manager - Default DynamicToolManager for status endpoints
+ * @param bundleFactory - Bundle factory callback for the transport layer
+ * @param sessionContextResolver - Optional session context resolver
+ * @returns A configured FastifyTransport
+ */
+function buildTransport(
+  options: CreateMcpServerOptions,
+  manager: ReturnType<ServerOrchestrator["getManager"]>,
+  bundleFactory: CreateBundleCallback,
+  sessionContextResolver: SessionContextResolver | undefined
+): FastifyTransport {
+  const builder = FastifyTransport.builder()
+    .defaultManager(manager)
+    .createBundle(bundleFactory)
+    .host(options.http?.host ?? "0.0.0.0")
+    .port(options.http?.port ?? 3000)
+    .basePath(options.http?.basePath ?? "/")
+    .cors(options.http?.cors ?? true)
+    .logger(options.http?.logger ?? false);
+
+  if (options.http?.app) {
+    builder.app(options.http.app);
+  }
+  if (options.http?.customEndpoints) {
+    builder.customEndpoints(options.http.customEndpoints);
+  }
+  if (options.configSchema) {
+    builder.configSchema(options.configSchema);
+  }
+  if (sessionContextResolver) {
+    builder.sessionContextResolver(sessionContextResolver);
+  }
+  if (options.context !== undefined) {
+    builder.baseContext(options.context);
+  }
+
+  return builder.build();
 }

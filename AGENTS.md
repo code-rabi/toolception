@@ -44,6 +44,15 @@ Client → HTTP (Fastify) → Per-client MCP Server → ServerOrchestrator
 
 `createPermissionBasedMcpServer` — per-client STATIC servers with access control. Permissions resolved from headers or server config. No meta-tools.
 
+## Code Style
+
+1. **No non-null assertions (`!`)** — If a value might be `undefined`, guard before use or use conditional builder calls. Never use `!` to silence the compiler.
+2. **No `as any` in production code** — Permitted only for defensive runtime guards against misconfiguration (e.g. checking a property that doesn't exist on the type) and for SDK boundary mismatches where types are unavailable. Every `as any` should have a comment justifying it.
+3. **Named functions over anonymous callbacks** — Extract inline closures longer than ~5 lines into named functions with JSDoc. Helps readability and stack traces.
+4. **Builder pattern: conditional calls for optional fields** — When a builder method requires a non-optional param but the source value may be `undefined`, call the method conditionally (`if (value) { builder.method(value); }`) rather than asserting.
+5. **Prefer `builder()` over raw constructors** — When a class exposes a builder, use it. Keeps construction style consistent across the codebase.
+6. **Named intermediate variables** — Assign computed values (ternaries, function results) to descriptively-named `const` variables before passing them onward.
+
 ## Critical Invariants
 
 1. **All tools → ToolRegistry** — Collision detection happens here only
