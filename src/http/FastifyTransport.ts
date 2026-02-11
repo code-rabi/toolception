@@ -278,7 +278,8 @@ export class FastifyTransport {
         reply.code(400);
         return "Missing mcp-client-id";
       }
-      const bundle = this.clientCache.get(clientId);
+      const { cacheKey } = this.resolveSessionContext(req, clientId);
+      const bundle = this.clientCache.get(cacheKey);
       if (!bundle) {
         reply.code(400);
         return "Invalid or expired client";
@@ -323,7 +324,8 @@ export class FastifyTransport {
             id: null,
           };
         }
-        const bundle = this.clientCache.get(clientId);
+        const { cacheKey } = this.resolveSessionContext(req, clientId);
+        const bundle = this.clientCache.get(cacheKey);
         const transport = bundle?.sessions.get(sessionId);
         if (!bundle || !transport) {
           reply.code(404);

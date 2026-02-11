@@ -100,13 +100,17 @@ function validatePermissionOptions(
 function buildPermissionResolver(
   options: CreatePermissionBasedMcpServerOptions
 ): PermissionResolver {
-  return PermissionResolver.builder()
+  const builder = PermissionResolver.builder()
     .source(options.permissions.source)
     .headerName(options.permissions.headerName ?? "mcp-toolset-permissions")
     .staticMap(options.permissions.staticMap ?? {})
-    .resolver(options.permissions.resolver as (clientId: string) => string[])
-    .defaultPermissions(options.permissions.defaultPermissions ?? [])
-    .build();
+    .defaultPermissions(options.permissions.defaultPermissions ?? []);
+
+  if (options.permissions.resolver) {
+    builder.resolver(options.permissions.resolver);
+  }
+
+  return builder.build();
 }
 
 /**

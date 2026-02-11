@@ -81,10 +81,10 @@ export class DynamicToolManager {
     toolsetName: string,
     skipNotification = false
   ): Promise<{ success: boolean; message: string }> {
-    const earlyExit = this.validateToolsetForEnable(toolsetName);
-    if (earlyExit) return earlyExit;
+    const validation = this.validateToolsetForEnable(toolsetName);
+    if ("message" in validation) return validation;
 
-    const sanitized = this.resolver.validateToolsetName(toolsetName).sanitized!;
+    const { sanitized } = validation;
 
     // Check exposure policies BEFORE resolving tools to fail fast
     const policyCheck = this.checkExposurePolicy(sanitized);
@@ -120,11 +120,11 @@ export class DynamicToolManager {
 
   /**
    * @param toolsetName - The raw toolset name to validate
-   * @returns Early exit result if invalid, or null to continue
+   * @returns Error result if invalid, or `{ sanitized }` to continue
    */
   private validateToolsetForEnable(
     toolsetName: string
-  ): { success: boolean; message: string } | null {
+  ): { success: boolean; message: string } | { sanitized: string } {
     const validation = this.resolver.validateToolsetName(toolsetName);
     if (!validation.isValid || !validation.sanitized) {
       return {
@@ -138,7 +138,7 @@ export class DynamicToolManager {
         message: `Toolset '${validation.sanitized}' is already enabled.`,
       };
     }
-    return null;
+    return { sanitized: validation.sanitized };
   }
 
   /**

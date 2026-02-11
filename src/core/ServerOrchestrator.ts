@@ -34,14 +34,20 @@ export class ServerOrchestrator {
         options.exposurePolicy?.namespaceToolsWithSetKey ?? true
       )
       .build();
-    this.manager = DynamicToolManager.builder()
+    const managerBuilder = DynamicToolManager.builder()
       .server(options.server)
       .resolver(this.resolver)
       .context(options.context)
-      .onToolsListChanged(options.notifyToolsListChanged as () => Promise<void> | void)
-      .exposurePolicy(options.exposurePolicy as ExposurePolicy)
-      .toolRegistry(toolRegistry)
-      .build();
+      .toolRegistry(toolRegistry);
+
+    if (options.notifyToolsListChanged) {
+      managerBuilder.onToolsListChanged(options.notifyToolsListChanged);
+    }
+    if (options.exposurePolicy) {
+      managerBuilder.exposurePolicy(options.exposurePolicy);
+    }
+
+    this.manager = managerBuilder.build();
 
     // Register meta-tools only if requested (default true)
     if (options.registerMetaTools !== false) {
