@@ -1177,7 +1177,7 @@ await client.close();
 
 - **What**: Clients identify themselves via the `mcp-client-id` HTTP header on every request.
 - **Who generates it**: The client. Use a stable identifier (e.g., UUID persisted locally).
-- **If omitted**: The server assigns a one-off `anon-<uuid>` and skips caching; this is unsuitable for multi-request flows and SSE.
+- **If omitted**: MCP protocol endpoints (`POST /mcp`, `GET /mcp`, `DELETE /mcp`) return a 400 error. Custom endpoints still accept anonymous clients with auto-generated IDs.
 
 Examples (official MCP client)
 

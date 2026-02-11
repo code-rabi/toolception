@@ -42,6 +42,77 @@ describe("FastifyTransport", () => {
     await transport.stop();
   });
 
+  it("POST /mcp without mcp-client-id returns 400", async () => {
+    const server: any = {
+      async connect(_t: any) {},
+    };
+    const resolver = new ModuleResolver({
+      catalog: { core: { name: "Core", description: "", tools: [] } } as any,
+    });
+    const manager = new DynamicToolManager({ server, resolver });
+
+    const app = Fastify({ logger: false });
+
+    const transport = new FastifyTransport(
+      manager,
+      () => ({ server, orchestrator: {} as any }),
+      { port: 0, logger: false, app }
+    );
+    await transport.start();
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/mcp",
+      headers: {},
+      payload: {
+        jsonrpc: "2.0",
+        method: "initialize",
+        params: {},
+        id: 1,
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe(-32600);
+    expect(res.json().error.message).toContain("mcp-client-id");
+
+    await transport.stop();
+  });
+
+  it("POST /mcp with whitespace-only mcp-client-id returns 400", async () => {
+    const server: any = {
+      async connect(_t: any) {},
+    };
+    const resolver = new ModuleResolver({
+      catalog: { core: { name: "Core", description: "", tools: [] } } as any,
+    });
+    const manager = new DynamicToolManager({ server, resolver });
+
+    const app = Fastify({ logger: false });
+
+    const transport = new FastifyTransport(
+      manager,
+      () => ({ server, orchestrator: {} as any }),
+      { port: 0, logger: false, app }
+    );
+    await transport.start();
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/mcp",
+      headers: { "mcp-client-id": "   " },
+      payload: {
+        jsonrpc: "2.0",
+        method: "initialize",
+        params: {},
+        id: 1,
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe(-32600);
+
+    await transport.stop();
+  });
+
   it("DELETE /mcp returns proper errors for invalid requests", async () => {
     const server: any = {
       async connect(_t: any) {},

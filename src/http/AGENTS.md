@@ -29,7 +29,7 @@ Provides Fastify-based HTTP transport for the MCP protocol. Handles SSE streams,
 
 ## Invariants
 
-1. **Anonymous clients get `anon-` prefix** - Generated as `anon-${UUID}`, not cached
+1. **`mcp-client-id` header required** - All MCP protocol endpoints (POST, GET, DELETE) reject requests without this header (400). Custom endpoints still generate `anon-${UUID}` fallback.
 2. **Session created on POST /mcp initialize** - Tracked in `bundle.sessions` Map
 3. **Cache key format** - `${clientId}:${contextHash}` when session context differs
 4. **Reserved paths cannot be overridden** - `/mcp`, `/healthz`, `/tools`, `/.well-known/mcp-config`
@@ -43,8 +43,8 @@ headers: Record<string, string>
 // Query params filtered to string values
 query: Record<string, string>
 
-// Client ID from header or auto-generated
-clientId: headers['mcp-client-id'] ?? `anon-${uuid()}`
+// Client ID from header (required for /mcp endpoints, auto-generated for custom endpoints)
+clientId: headers['mcp-client-id']
 ```
 
 ## Session Lifecycle
@@ -87,7 +87,7 @@ definePermissionAwareEndpoint({...})
 ## Anti-patterns
 
 - Registering endpoints on reserved paths (throws)
-- Assuming client IDs persist (anonymous regenerated each request)
+- Sending MCP protocol requests without `mcp-client-id` header (returns 400)
 - Blocking on SSE handlers (should be async)
 
 ## Dependencies

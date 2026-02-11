@@ -5,6 +5,7 @@ import Fastify, {
 } from "fastify";
 import cors from "@fastify/cors";
 import { randomUUID } from "node:crypto";
+import { z } from "zod";
 import type { DynamicToolManager } from "../core/DynamicToolManager.js";
 import type { ServerOrchestrator } from "../core/ServerOrchestrator.js";
 import { ClientResourceCache } from "../session/ClientResourceCache.js";
@@ -15,6 +16,11 @@ import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CustomEndpointDefinition } from "./customEndpoints.js";
 import { registerCustomEndpoints } from "./endpointRegistration.js";
+
+const mcpClientIdSchema = z
+  .string({ message: "Missing required mcp-client-id header" })
+  .trim()
+  .min(1, "mcp-client-id header must not be empty");
 
 export interface FastifyTransportOptions {
   host?: string;
@@ -128,16 +134,18 @@ export class FastifyTransport {
     app.post(
       `${base}/mcp`,
       async (req: FastifyRequest, reply: FastifyReply) => {
-        const clientIdHeader = (
-          req.headers["mcp-client-id"] as string | undefined
-        )?.trim();
-        const clientId =
-          clientIdHeader && clientIdHeader.length > 0
-            ? clientIdHeader
-            : `anon-${randomUUID()}`;
-
-        // When anon id, avoid caching (one-off)
-        const useCache = !clientId.startsWith("anon-");
+        const parseResult = mcpClientIdSchema.safeParse(
+          req.headers["mcp-client-id"]
+        );
+        if (!parseResult.success) {
+          reply.code(400);
+          return {
+            jsonrpc: "2.0",
+            error: { code: -32600, message: parseResult.error.issues[0].message },
+            id: null,
+          };
+        }
+        const clientId = parseResult.data;
 
         // Build session request context and resolve merged context
         const { cacheKey, mergedContext } = this.resolveSessionContext(
@@ -145,7 +153,7 @@ export class FastifyTransport {
           clientId
         );
 
-        let bundle = useCache ? this.clientCache.get(cacheKey) : null;
+        let bundle = this.clientCache.get(cacheKey);
         if (!bundle) {
           const created = this.createBundle(mergedContext);
           bundle = {
@@ -153,7 +161,7 @@ export class FastifyTransport {
             orchestrator: created.orchestrator,
             sessions: new Map(),
           };
-          if (useCache) this.clientCache.set(cacheKey, bundle);
+          this.clientCache.set(cacheKey, bundle);
         }
 
         const sessionId = req.headers["mcp-session-id"] as string | undefined;

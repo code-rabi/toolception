@@ -5,6 +5,7 @@ import Fastify, {
 } from "fastify";
 import cors from "@fastify/cors";
 import { randomUUID } from "node:crypto";
+import { z } from "zod";
 import type { DynamicToolManager } from "../core/DynamicToolManager.js";
 import { ClientResourceCache } from "../session/ClientResourceCache.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -17,6 +18,11 @@ import type {
 } from "./createPermissionAwareBundle.js";
 import type { CustomEndpointDefinition } from "../http/customEndpoints.js";
 import { registerCustomEndpoints } from "../http/endpointRegistration.js";
+
+const mcpClientIdSchema = z
+  .string({ message: "Missing required mcp-client-id header" })
+  .trim()
+  .min(1, "mcp-client-id header must not be empty");
 
 export interface PermissionAwareFastifyTransportOptions {
   host?: string;
@@ -264,14 +270,24 @@ export class PermissionAwareFastifyTransport {
     app.post(
       `${base}/mcp`,
       async (req: FastifyRequest, reply: FastifyReply) => {
+        // Validate mcp-client-id header
+        const parseResult = mcpClientIdSchema.safeParse(
+          req.headers["mcp-client-id"]
+        );
+        if (!parseResult.success) {
+          reply.code(400);
+          return {
+            jsonrpc: "2.0",
+            error: { code: -32600, message: parseResult.error.issues[0].message },
+            id: null,
+          };
+        }
+
         // Extract client context from request
         const context = this.#extractClientContext(req);
 
-        // Determine if we should cache this client's bundle
-        const useCache = !context.clientId.startsWith("anon-");
-
         // Get or create permission-aware bundle for this client
-        let bundle = useCache ? this.clientCache.get(context.clientId) : null;
+        let bundle = this.clientCache.get(context.clientId);
         if (!bundle) {
           try {
             const created = await this.createPermissionAwareBundle(context);
@@ -294,7 +310,7 @@ export class PermissionAwareFastifyTransport {
               sessions:
                 providedSessions instanceof Map ? providedSessions : new Map(),
             };
-            if (useCache) this.clientCache.set(context.clientId, bundle);
+            this.clientCache.set(context.clientId, bundle);
           } catch (error) {
             // Handle permission resolution or bundle creation failures
             console.error(
@@ -446,7 +462,8 @@ export class PermissionAwareFastifyTransport {
 
   /**
    * Extracts client context from the request.
-   * Generates anonymous client ID if not provided in headers.
+   * Generates anonymous client ID if header is missing. MCP protocol endpoints
+   * validate the header separately before calling this.
    * @param req - Fastify request object
    * @returns Client request context with ID and headers
    * @private

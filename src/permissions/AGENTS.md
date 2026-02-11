@@ -24,7 +24,7 @@ Provides per-client access control for toolsets. Supports header-based and confi
 **PermissionAwareFastifyTransport** (`PermissionAwareFastifyTransport.ts`)
 - HTTP transport with permission enforcement
 - Per-client bundles via ClientResourceCache
-- Anonymous clients (`anon-*`) not cached
+- MCP endpoints require `mcp-client-id` header (400 if missing)
 
 ## Invariants
 
@@ -50,14 +50,14 @@ Provides per-client access control for toolsets. Supports header-based and confi
 - Manual invalidation required
 
 **PermissionAwareFastifyTransport cache:**
-- Keyed by clientId (non-anonymous only)
+- Keyed by clientId (all MCP clients, since header is required)
 - LRU eviction with onEvict cleanup
 - Closes all sessions in bundle on eviction
 
 ## Anti-patterns
 
 - Expecting cache to auto-invalidate (it won't)
-- Caching anonymous client bundles (they're excluded)
+- Sending MCP protocol requests without `mcp-client-id` header (returns 400)
 - Trusting client-provided permissions without config-based fallback
 
 ## Permission Flow
@@ -73,7 +73,7 @@ PermissionResolver.resolve(clientId, headers)
   ↓
 Create STATIC mode server with allowed toolsets only
   ↓
-Return bundle (cached if non-anonymous)
+Return bundle (cached for reuse)
 ```
 
 ## Dependencies
