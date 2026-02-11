@@ -24,7 +24,7 @@ export interface PermissionAwareFastifyTransportOptions {
 export interface ClientRequestContext {
   /**
    * Unique identifier for the client making the request.
-   * May be provided via mcp-client-id header or generated as anonymous ID.
+   * Must be provided via the mcp-client-id header for MCP protocol traffic.
    */
   clientId: string;
 
