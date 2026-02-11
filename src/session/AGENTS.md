@@ -73,4 +73,4 @@ Return {context, cacheKeySuffix}
 - `src/types/AGENTS.md` - SessionContextConfig type definition
 
 ---
-*Keep this Intent Node updated when modifying session handling. See root CLAUDE.md for maintenance guidelines.*
+*Keep this Intent Node updated when modifying session handling. See root AGENTS.md for maintenance guidelines.*

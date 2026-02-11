@@ -86,4 +86,4 @@ notifyToolsChanged() (unless skipNotification)
 - `src/types/AGENTS.md` - ExposurePolicy, ToolingErrorCode
 
 ---
-*Keep this Intent Node updated when modifying core orchestration. See root CLAUDE.md for maintenance guidelines.*
+*Keep this Intent Node updated when modifying core orchestration. See root AGENTS.md for maintenance guidelines.*

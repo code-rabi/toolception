@@ -88,4 +88,4 @@ Return bundle (cached for reuse)
 - `src/types/AGENTS.md` - PermissionConfig type
 
 ---
-*Keep this Intent Node updated when modifying permissions. See root CLAUDE.md for maintenance guidelines.*
+*Keep this Intent Node updated when modifying permissions. See root AGENTS.md for maintenance guidelines.*

@@ -58,4 +58,4 @@ Return flattened McpToolDefinition[]
 - `src/types/AGENTS.md` - ModuleLoader type definition
 
 ---
-*Keep this Intent Node updated when modifying mode resolution. See root CLAUDE.md for maintenance guidelines.*
+*Keep this Intent Node updated when modifying mode resolution. See root AGENTS.md for maintenance guidelines.*

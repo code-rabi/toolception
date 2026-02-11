@@ -59,4 +59,4 @@ Defines all TypeScript interfaces, types, and contracts for the Toolception syst
 - `src/core/AGENTS.md` - How types are used in orchestration
 
 ---
-*Keep this Intent Node updated when modifying types. See root CLAUDE.md for maintenance guidelines.*
+*Keep this Intent Node updated when modifying types. See root AGENTS.md for maintenance guidelines.*

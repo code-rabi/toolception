@@ -102,4 +102,4 @@ definePermissionAwareEndpoint({...})
 - `src/server/AGENTS.md` - How transport is configured
 
 ---
-*Keep this Intent Node updated when modifying HTTP transport. See root CLAUDE.md for maintenance guidelines.*
+*Keep this Intent Node updated when modifying HTTP transport. See root AGENTS.md for maintenance guidelines.*

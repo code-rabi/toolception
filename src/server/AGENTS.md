@@ -104,4 +104,4 @@ Always STATIC per client, no meta-tools
 - `src/permissions/AGENTS.md` - Permission resolution
 
 ---
-*Keep this Intent Node updated when modifying server creation. See root CLAUDE.md for maintenance guidelines.*
+*Keep this Intent Node updated when modifying server creation. See root AGENTS.md for maintenance guidelines.*
