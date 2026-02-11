@@ -6,15 +6,8 @@ Provides Fastify-based HTTP transport for the MCP protocol. Handles SSE streams,
 
 ## Key Components
 
-**FastifyTransport** (`FastifyTransport.ts`)
-- Main HTTP transport using Fastify
-- Per-client bundles via ClientResourceCache
-- Optional SessionContextResolver for context differentiation
-
-**Custom Endpoints** (`customEndpoints.ts`, `endpointRegistration.ts`)
-- Type-safe endpoint definitions with Zod schemas
-- `defineEndpoint()` / `definePermissionAwareEndpoint()` helpers
-- Automatic request/response validation
+- **FastifyTransport** (`FastifyTransport.ts`) — Main HTTP transport. Per-client bundles via ClientResourceCache, optional SessionContextResolver for context differentiation.
+- **Custom Endpoints** (`customEndpoints.ts`, `endpointRegistration.ts`) — Type-safe endpoint definitions with Zod schemas. `defineEndpoint()` / `definePermissionAwareEndpoint()` helpers.
 
 ## Endpoints
 
@@ -29,59 +22,37 @@ Provides Fastify-based HTTP transport for the MCP protocol. Handles SSE streams,
 
 ## Invariants
 
-1. **`mcp-client-id` header required** - All MCP protocol endpoints (POST, GET, DELETE) reject requests without this header (400). Custom endpoints still generate `anon-${UUID}` fallback.
-2. **Session created on POST /mcp initialize** - Tracked in `bundle.sessions` Map
-3. **Cache key format** - `${clientId}:${contextHash}` when session context differs
-4. **Reserved paths cannot be overridden** - `/mcp`, `/healthz`, `/tools`, `/.well-known/mcp-config`
+1. **`mcp-client-id` header required** — All `/mcp` endpoints reject without it (400). Custom endpoints auto-generate `anon-${UUID}` fallback instead.
+2. **Session created on POST /mcp initialize** — `isInitializeRequest()` from MCP SDK detects first-contact requests. New session ID generated via `randomUUID()`, stored in `bundle.sessions` Map.
+3. **Cache key uses `resolveSessionContext()`** — All three `/mcp` handlers (POST, GET, DELETE) must derive the cache key through the same `resolveSessionContext()` path. Using plain `clientId` causes cache misses when session context is active.
+4. **Reserved paths cannot be overridden** — `/mcp`, `/healthz`, `/tools`, `/.well-known/mcp-config` are registered before custom endpoints.
 
-## Request Extraction
+## SDK Boundary Workarounds
 
-```typescript
-// Headers normalized to lowercase
-headers: Record<string, string>
+These `as any` casts exist because of MCP SDK / Fastify type mismatches:
 
-// Query params filtered to string values
-query: Record<string, string>
-
-// Client ID from header (required for /mcp endpoints, auto-generated for custom endpoints)
-clientId: headers['mcp-client-id']
-```
+- **Fastify raw req/res passthrough** — `transport.handleRequest((req as any).raw, (reply as any).raw, body)`. The SDK expects Node `http.IncomingMessage`/`http.ServerResponse` but Fastify wraps these objects.
+- **`StreamableHTTPServerTransport.close()`** — The DELETE handler calls `(transport as any).close()` because `.close()` exists at runtime but is not in the SDK's TypeScript types.
 
 ## Session Lifecycle
 
 ```
 1. POST /mcp (initialize)
+   → isInitializeRequest(body) detects first contact
    → Create StreamableHTTPServerTransport
-   → Generate session ID
-   → Store in bundle.sessions
+   → Generate session ID, store in bundle.sessions
 
 2. GET /mcp (streaming)
    → Require mcp-session-id header
    → Delegate to transport.handleRequest()
-   → Maintain SSE connection
 
 3. POST /mcp (subsequent)
-   → Use existing session
+   → Look up existing session by mcp-session-id
    → Route JSON-RPC through transport
 
 4. DELETE /mcp (cleanup)
+   → Close transport (best-effort)
    → Remove session from bundle
-   → Close transport
-```
-
-## Custom Endpoint Registration
-
-```typescript
-// Standard endpoint
-defineEndpoint({
-  path: '/my-endpoint',
-  method: 'POST',
-  body: z.object({ data: z.string() }),
-  handler: async (req, manager) => ({ result: 'ok' })
-})
-
-// Permission-aware (includes allowedToolsets, failedToolsets)
-definePermissionAwareEndpoint({...})
 ```
 
 ## Anti-patterns
@@ -94,12 +65,6 @@ definePermissionAwareEndpoint({...})
 
 - Imports: `src/types`, `src/core`, `src/session`
 - Used by: `src/server/createMcpServer`
-
-## See Also
-
-- `src/session/AGENTS.md` - SessionContextResolver, ClientResourceCache
-- `src/permissions/AGENTS.md` - PermissionAwareFastifyTransport
-- `src/server/AGENTS.md` - How transport is configured
 
 ---
 *Keep this Intent Node updated when modifying HTTP transport. See root AGENTS.md for maintenance guidelines.*

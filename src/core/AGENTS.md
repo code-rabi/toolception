@@ -2,88 +2,45 @@
 
 ## Purpose
 
-Central orchestration layer that wires together all components. Manages toolset lifecycle, tool registration, and server initialization.
+Central orchestration layer. Manages toolset lifecycle, tool registration, and server initialization.
 
 ## Key Components
 
-**ServerOrchestrator** (`ServerOrchestrator.ts`)
-- Entry point combining ModuleResolver, DynamicToolManager, ToolRegistry
-- `ensureReady()`: Async - waits for initialization, throws stored errors
-- `isReady()`: Non-throwing alternative for health checks
-- `getMode()`: Returns resolved DYNAMIC or STATIC mode
-- `getManager()`: Access to DynamicToolManager
-
-**DynamicToolManager** (`DynamicToolManager.ts`)
-- `enableToolset(name, skipNotification?)`: Full validation + registration flow
-- `disableToolset(name)`: State-only operation (see invariant #2)
-- `enableToolsets(names)`: Batch enable with single notification
-- `checkExposurePolicy(name)`: Validates against allowlist/denylist/maxActive
-- `getStatus()`: Returns available/active toolsets, tools list, toolset→tools map
-
-**ToolRegistry** (`ToolRegistry.ts`)
-- `getSafeName(toolsetKey, toolName)`: Applies namespacing if enabled
-- `has(name)`: Collision detection
-- `add(name)` / `addForToolset(toolsetKey, name)`: Registration with collision check
-- `mapAndValidate(toolsetKey, tools)`: Transforms tools with safe names, checks collisions
+- **ServerOrchestrator** — Entry point wiring ModuleResolver + DynamicToolManager + ToolRegistry. Resolves startup mode, initializes toolsets, optionally registers meta-tools.
+- **DynamicToolManager** — Enable/disable toolsets at runtime. Validates names, checks exposure policy, resolves tools via ModuleResolver, registers via ToolRegistry.
+- **ToolRegistry** — Tool name registry with collision detection and optional namespacing (`toolset.toolName`).
 
 ## Invariants
 
-1. **All tools go through ToolRegistry** - Collision detection happens here only
-2. **Disable is state-only** - MCP SDK cannot unregister tools; disabled toolsets' tools remain callable
-3. **Notifications may fail silently** - "Not connected" errors are expected and swallowed
-4. **Namespacing applied BEFORE collision check** - `mapAndValidate()` generates safe names first
-5. **Toolset added to activeToolsets AFTER registration** - Partial failures leave toolset inactive
+1. **All tools go through ToolRegistry** — Collision detection happens here only. Bypassing it causes silent name conflicts.
+2. **Disable is state-only** — MCP SDK has no `server.removeTool()`; disabled toolsets' tools remain callable by clients. `activeToolsets` tracks logical state only.
+3. **Notifications may fail silently** — "Not connected" errors are expected during SSE disconnect and are swallowed.
+4. **Namespacing applied BEFORE collision check** — `mapAndValidate()` generates safe names first, then checks for conflicts.
+5. **Toolset added to activeToolsets AFTER registration** — All tools must register successfully before toolset is marked active. Partial failures leave the toolset inactive but orphaned tools remain registered (MCP limitation).
+6. **`enableToolsets()` batches notifications** — Calls `enableToolset(name, skipNotification=true)` per toolset, sends one `tools/list_changed` notification at the end.
 
-## Meta-tools Registration
+## Enable Toolset Flow
 
-Located in `src/meta/registerMetaTools.ts` (called by ServerOrchestrator):
-
-Meta-tools are registered with `ToolRegistry` under the reserved `_meta` toolset key (`META_TOOLSET_KEY` constant). This ensures collision detection with user-defined tools and makes meta-tools visible in `toolRegistry.list()` and `toolRegistry.listByToolset()`.
-
-**DYNAMIC mode only:**
-- `enable_toolset` / `disable_toolset` - Runtime toolset management
-- `list_toolsets` / `describe_toolset` - Discovery
-
-**Both modes:**
-- `list_tools` - List registered tool names (includes meta-tools)
+```
+enableToolset(name)
+  → validateToolsetForEnable(name) → fail fast if invalid/already active
+  → checkExposurePolicy(name) → fail fast if denied by allowlist/denylist/maxActive
+  → resolveAndRegisterTools(name) → ModuleResolver + ToolRegistry
+  → activeToolsets.add(name) — only after successful registration
+  → notifyToolsChanged() — unless skipNotification
+```
 
 ## Anti-patterns
 
 - Bypassing ToolRegistry for tool registration (causes collision issues)
 - Expecting disable to unregister tools from MCP (it can't)
 - Throwing on notification failures (they're expected in SSE disconnect)
-- Using `_meta` as a toolset key in the catalog (reserved for meta-tools, rejected at startup)
-
-## Enable Toolset Flow
-
-```
-enableToolset(name)
-  ↓
-ModuleResolver.validateToolsetName(name)
-  ↓
-checkExposurePolicy(name) → fail fast if denied
-  ↓
-ModuleResolver.resolveToolsForToolsets([name], context)
-  ↓
-ToolRegistry.mapAndValidate(name, tools) → apply namespacing
-  ↓
-For each tool: registerSingleTool(tool, name)
-  ↓
-activeToolsets.add(name)
-  ↓
-notifyToolsChanged() (unless skipNotification)
-```
+- Using `_meta` as a toolset key in the catalog (reserved for meta-tools — see `src/meta/AGENTS.md`)
 
 ## Dependencies
 
 - Imports: `src/types`, `src/mode`, `src/meta`
 - Used by: `src/server/*`, `src/http/*`
-
-## See Also
-
-- `src/mode/AGENTS.md` - How tools are resolved
-- `src/server/AGENTS.md` - How orchestrator is created
-- `src/types/AGENTS.md` - ExposurePolicy, ToolingErrorCode
 
 ---
 *Keep this Intent Node updated when modifying core orchestration. See root AGENTS.md for maintenance guidelines.*
