@@ -90,27 +90,52 @@ export class ModuleResolver {
     for (const name of toolsets) {
       const def = this.catalog[name];
       if (!def) continue;
-      if (Array.isArray(def.tools) && def.tools.length > 0) {
-        collected.push(...def.tools);
-      }
-      if (Array.isArray(def.modules) && def.modules.length > 0) {
-        for (const modKey of def.modules) {
-          const loader = this.moduleLoaders[modKey];
-          if (!loader) continue;
-          try {
-            const loaded = await loader(context);
-            if (Array.isArray(loaded) && loaded.length > 0) {
-              collected.push(...loaded);
-            }
-          } catch (err) {
-            console.warn(
-              `Module loader '${modKey}' failed for toolset '${name}':`,
-              err
-            );
-          }
-        }
-      }
+      this.collectDirectTools(def, collected);
+      await this.loadModuleTools(def, name, context, collected);
     }
     return collected;
+  }
+
+  /**
+   * @param def - The toolset definition
+   * @param collected - Mutable array to append direct tools to
+   */
+  private collectDirectTools(
+    def: ToolSetDefinition,
+    collected: McpToolDefinition[]
+  ): void {
+    if (Array.isArray(def.tools) && def.tools.length > 0) {
+      collected.push(...def.tools);
+    }
+  }
+
+  /**
+   * @param def - The toolset definition containing module keys
+   * @param toolsetName - The toolset name for error messages
+   * @param context - Optional context passed to module loaders
+   * @param collected - Mutable array to append loaded tools to
+   */
+  private async loadModuleTools(
+    def: ToolSetDefinition,
+    toolsetName: string,
+    context: unknown,
+    collected: McpToolDefinition[]
+  ): Promise<void> {
+    if (!Array.isArray(def.modules) || def.modules.length === 0) return;
+    for (const modKey of def.modules) {
+      const loader = this.moduleLoaders[modKey];
+      if (!loader) continue;
+      try {
+        const loaded = await loader(context);
+        if (Array.isArray(loaded) && loaded.length > 0) {
+          collected.push(...loaded);
+        }
+      } catch (err) {
+        console.warn(
+          `Module loader '${modKey}' failed for toolset '${toolsetName}':`,
+          err
+        );
+      }
+    }
   }
 }

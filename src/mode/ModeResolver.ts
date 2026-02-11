@@ -82,21 +82,11 @@ export class ToolsetValidator {
     catalog: ToolSetCatalog
   ): { isValid: boolean; sanitized?: string; error?: string } {
     if (!name || typeof name !== "string") {
-      return {
-        isValid: false,
-        error: `Invalid toolset name provided. Must be a non-empty string. Available toolsets: ${Object.keys(
-          catalog
-        ).join(", ")}`,
-      };
+      return this.createInvalidNameError(name, catalog);
     }
     const sanitized = name.trim();
     if (sanitized.length === 0) {
-      return {
-        isValid: false,
-        error: `Empty toolset name provided. Available toolsets: ${Object.keys(
-          catalog
-        ).join(", ")}`,
-      };
+      return this.createInvalidNameError(sanitized, catalog);
     }
     if (!catalog[sanitized]) {
       return {
@@ -107,6 +97,28 @@ export class ToolsetValidator {
       };
     }
     return { isValid: true, sanitized };
+  }
+
+  /**
+   * @param name - The invalid name value
+   * @param catalog - The toolset catalog for listing available options
+   * @returns Validation result with descriptive error message
+   */
+  private createInvalidNameError(
+    name: unknown,
+    catalog: ToolSetCatalog
+  ): { isValid: false; error: string } {
+    const available = Object.keys(catalog).join(", ");
+    if (!name || typeof name !== "string") {
+      return {
+        isValid: false,
+        error: `Invalid toolset name provided. Must be a non-empty string. Available toolsets: ${available}`,
+      };
+    }
+    return {
+      isValid: false,
+      error: `Empty toolset name provided. Available toolsets: ${available}`,
+    };
   }
 
   /**

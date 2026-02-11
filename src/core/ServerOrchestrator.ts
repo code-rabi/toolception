@@ -105,43 +105,54 @@ export class ServerOrchestrator {
     startup: { mode?: Exclude<Mode, "ALL">; toolsets?: string[] | "ALL" },
     catalog: ToolSetCatalog
   ): { mode: Exclude<Mode, "ALL">; toolsets?: string[] | "ALL" } {
-    // Explicit mode dominates
     if (startup.mode) {
-      if (startup.mode === "DYNAMIC" && startup.toolsets) {
-        console.warn("startup.toolsets provided but ignored in DYNAMIC mode");
-        return { mode: "DYNAMIC" };
-      }
-      if (startup.mode === "STATIC") {
-        if (startup.toolsets === "ALL")
-          return { mode: "STATIC", toolsets: "ALL" };
-        const names = Array.isArray(startup.toolsets) ? startup.toolsets : [];
-        const valid: string[] = [];
-        for (const name of names) {
-          const { isValid, sanitized, error } =
-            this.toolsetValidator.validateToolsetName(name, catalog);
-          if (isValid && sanitized) valid.push(sanitized);
-          else if (error) console.warn(error);
-        }
-        if (names.length > 0 && valid.length === 0) {
-          throw new Error(
-            "STATIC mode requires valid toolsets or 'ALL'; none were valid"
-          );
-        }
-        return { mode: "STATIC", toolsets: valid };
-      }
-      return { mode: startup.mode };
+      return this.resolveExplicitMode(startup.mode, startup.toolsets, catalog);
     }
+    return this.inferModeFromToolsets(startup, catalog);
+  }
 
-    // No explicit mode; infer from toolsets
+  /**
+   * @param mode - The explicit mode
+   * @param toolsets - Optional toolsets from startup config
+   * @param catalog - The toolset catalog to validate against
+   * @returns Resolved mode and toolsets
+   */
+  private resolveExplicitMode(
+    mode: Exclude<Mode, "ALL">,
+    toolsets: string[] | "ALL" | undefined,
+    catalog: ToolSetCatalog
+  ): { mode: Exclude<Mode, "ALL">; toolsets?: string[] | "ALL" } {
+    if (mode === "DYNAMIC" && toolsets) {
+      console.warn("startup.toolsets provided but ignored in DYNAMIC mode");
+      return { mode: "DYNAMIC" };
+    }
+    if (mode === "STATIC") {
+      if (toolsets === "ALL")
+        return { mode: "STATIC", toolsets: "ALL" };
+      const names = Array.isArray(toolsets) ? toolsets : [];
+      const valid = this.validateAndCollectToolsets(names, catalog);
+      if (names.length > 0 && valid.length === 0) {
+        throw new Error(
+          "STATIC mode requires valid toolsets or 'ALL'; none were valid"
+        );
+      }
+      return { mode: "STATIC", toolsets: valid };
+    }
+    return { mode };
+  }
+
+  /**
+   * @param startup - Startup config without an explicit mode
+   * @param catalog - The toolset catalog to validate against
+   * @returns Inferred mode and toolsets
+   */
+  private inferModeFromToolsets(
+    startup: { toolsets?: string[] | "ALL" },
+    catalog: ToolSetCatalog
+  ): { mode: Exclude<Mode, "ALL">; toolsets?: string[] | "ALL" } {
     if (startup.toolsets === "ALL") return { mode: "STATIC", toolsets: "ALL" };
     if (Array.isArray(startup.toolsets) && startup.toolsets.length > 0) {
-      const valid: string[] = [];
-      for (const name of startup.toolsets) {
-        const { isValid, sanitized, error } =
-          this.toolsetValidator.validateToolsetName(name, catalog);
-        if (isValid && sanitized) valid.push(sanitized);
-        else if (error) console.warn(error);
-      }
+      const valid = this.validateAndCollectToolsets(startup.toolsets, catalog);
       if (valid.length === 0) {
         throw new Error(
           "STATIC mode requires valid toolsets or 'ALL'; none were valid"
@@ -149,9 +160,26 @@ export class ServerOrchestrator {
       }
       return { mode: "STATIC", toolsets: valid };
     }
-
-    // Default
     return { mode: "DYNAMIC" };
+  }
+
+  /**
+   * @param names - Array of toolset names to validate
+   * @param catalog - The toolset catalog to validate against
+   * @returns Array of valid, sanitized toolset names
+   */
+  private validateAndCollectToolsets(
+    names: string[],
+    catalog: ToolSetCatalog
+  ): string[] {
+    const valid: string[] = [];
+    for (const name of names) {
+      const { isValid, sanitized, error } =
+        this.toolsetValidator.validateToolsetName(name, catalog);
+      if (isValid && sanitized) valid.push(sanitized);
+      else if (error) console.warn(error);
+    }
+    return valid;
   }
 
   public getMode(): Exclude<Mode, "ALL"> {

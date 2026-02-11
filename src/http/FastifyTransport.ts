@@ -111,15 +111,56 @@ export class FastifyTransport {
       await app.register(cors, { origin: true });
     }
 
-    const base = this.options.basePath.endsWith("/")
-      ? this.options.basePath.slice(0, -1)
-      : this.options.basePath;
+    const base = this.normalizeBasePath(this.options.basePath);
 
+    this.registerHealthEndpoint(app, base);
+    this.registerToolsEndpoint(app, base);
+    this.registerConfigDiscoveryEndpoint(app, base);
+    this.registerMcpPostEndpoint(app, base);
+    this.registerMcpGetEndpoint(app, base);
+    this.registerMcpDeleteEndpoint(app, base);
+
+    // Register custom endpoints if provided
+    if (this.options.customEndpoints && this.options.customEndpoints.length > 0) {
+      registerCustomEndpoints(app, base, this.options.customEndpoints);
+    }
+
+    // Only listen if we created the app
+    if (!this.options.app) {
+      await app.listen({ host: this.options.host, port: this.options.port });
+    }
+    this.app = app;
+  }
+
+  /**
+   * @param basePath - The base path to normalize
+   * @returns Normalized base path without trailing slash
+   */
+  private normalizeBasePath(basePath: string): string {
+    return basePath.endsWith("/") ? basePath.slice(0, -1) : basePath;
+  }
+
+  /**
+   * @param app - Fastify instance
+   * @param base - Base path for routes
+   */
+  private registerHealthEndpoint(app: FastifyInstance, base: string): void {
     app.get(`${base}/healthz`, async () => ({ ok: true }));
+  }
 
+  /**
+   * @param app - Fastify instance
+   * @param base - Base path for routes
+   */
+  private registerToolsEndpoint(app: FastifyInstance, base: string): void {
     app.get(`${base}/tools`, async () => this.defaultManager.getStatus());
+  }
 
-    // Config discovery (placeholder schema)
+  /**
+   * @param app - Fastify instance
+   * @param base - Base path for routes
+   */
+  private registerConfigDiscoveryEndpoint(app: FastifyInstance, base: string): void {
     app.get(`${base}/.well-known/mcp-config`, async (_req, reply) => {
       reply.header("Content-Type", "application/schema+json; charset=utf-8");
       const baseSchema = this.configSchema ?? {
@@ -134,8 +175,13 @@ export class FastifyTransport {
       };
       return baseSchema;
     });
+  }
 
-    // POST /mcp - JSON-RPC
+  /**
+   * @param app - Fastify instance
+   * @param base - Base path for routes
+   */
+  private registerMcpPostEndpoint(app: FastifyInstance, base: string): void {
     app.post(
       `${base}/mcp`,
       async (req: FastifyRequest, reply: FastifyReply) => {
@@ -215,8 +261,13 @@ export class FastifyTransport {
         return reply;
       }
     );
+  }
 
-    // GET /mcp - SSE notifications
+  /**
+   * @param app - Fastify instance
+   * @param base - Base path for routes
+   */
+  private registerMcpGetEndpoint(app: FastifyInstance, base: string): void {
     app.get(`${base}/mcp`, async (req: FastifyRequest, reply: FastifyReply) => {
       const clientIdHeader = (
         req.headers["mcp-client-id"] as string | undefined
@@ -245,8 +296,13 @@ export class FastifyTransport {
       await transport.handleRequest((req as any).raw, (reply as any).raw);
       return reply;
     });
+  }
 
-    // DELETE /mcp - terminate session
+  /**
+   * @param app - Fastify instance
+   * @param base - Base path for routes
+   */
+  private registerMcpDeleteEndpoint(app: FastifyInstance, base: string): void {
     app.delete(
       `${base}/mcp`,
       async (req: FastifyRequest, reply: FastifyReply) => {
@@ -292,18 +348,6 @@ export class FastifyTransport {
         return reply;
       }
     );
-
-    // Register custom endpoints if provided
-    // IMPORTANT: Only register if customEndpoints is provided AND has items
-    if (this.options.customEndpoints && this.options.customEndpoints.length > 0) {
-      registerCustomEndpoints(app, base, this.options.customEndpoints);
-    }
-
-    // Only listen if we created the app
-    if (!this.options.app) {
-      await app.listen({ host: this.options.host, port: this.options.port });
-    }
-    this.app = app;
   }
 
   public async stop(): Promise<void> {

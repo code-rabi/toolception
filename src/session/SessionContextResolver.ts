@@ -51,31 +51,54 @@ export class SessionContextResolver {
       };
     }
 
-    // Parse and filter the query parameter config
     const parsedConfig = this.parseQueryConfig(request.query);
 
-    // If custom resolver is provided, use it
     if (this.config.contextResolver) {
-      try {
-        const resolvedContext = this.config.contextResolver(
-          request,
-          baseContext,
-          parsedConfig
-        );
-        return {
-          context: resolvedContext,
-          cacheKeySuffix: this.generateCacheKeySuffix(parsedConfig),
-        };
-      } catch {
-        // Fail secure: return base context on resolver error
-        return {
-          context: baseContext,
-          cacheKeySuffix: "default",
-        };
-      }
+      return this.resolveWithCustomResolver(request, baseContext, parsedConfig);
     }
 
-    // Default merge behavior
+    return this.resolveWithDefaultMerge(baseContext, parsedConfig);
+  }
+
+  /**
+   * @param request - The request context
+   * @param baseContext - The base context from server configuration
+   * @param parsedConfig - The parsed query parameter config
+   * @returns The resolved context and cache key suffix
+   */
+  private resolveWithCustomResolver(
+    request: SessionRequestContext,
+    baseContext: unknown,
+    parsedConfig: Record<string, unknown>
+  ): SessionContextResult {
+    try {
+      const resolvedContext = this.config.contextResolver!(
+        request,
+        baseContext,
+        parsedConfig
+      );
+      return {
+        context: resolvedContext,
+        cacheKeySuffix: this.generateCacheKeySuffix(parsedConfig),
+      };
+    } catch {
+      // Fail secure: return base context on resolver error
+      return {
+        context: baseContext,
+        cacheKeySuffix: "default",
+      };
+    }
+  }
+
+  /**
+   * @param baseContext - The base context from server configuration
+   * @param parsedConfig - The parsed query parameter config
+   * @returns The merged context and cache key suffix
+   */
+  private resolveWithDefaultMerge(
+    baseContext: unknown,
+    parsedConfig: Record<string, unknown>
+  ): SessionContextResult {
     const mergedContext = this.mergeContexts(baseContext, parsedConfig);
     return {
       context: mergedContext,

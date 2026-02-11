@@ -81,20 +81,10 @@ export class DynamicToolManager {
     toolsetName: string,
     skipNotification = false
   ): Promise<{ success: boolean; message: string }> {
-    const validation = this.resolver.validateToolsetName(toolsetName);
-    if (!validation.isValid || !validation.sanitized) {
-      return {
-        success: false,
-        message: validation.error || "Unknown validation error",
-      };
-    }
-    const sanitized = validation.sanitized;
-    if (this.activeToolsets.has(sanitized)) {
-      return {
-        success: false,
-        message: `Toolset '${sanitized}' is already enabled.`,
-      };
-    }
+    const earlyExit = this.validateToolsetForEnable(toolsetName);
+    if (earlyExit) return earlyExit;
+
+    const sanitized = this.resolver.validateToolsetName(toolsetName).sanitized!;
 
     // Check exposure policies BEFORE resolving tools to fail fast
     const policyCheck = this.checkExposurePolicy(sanitized);
@@ -106,22 +96,7 @@ export class DynamicToolManager {
     const registeredTools: string[] = [];
 
     try {
-      const resolvedTools = await this.resolver.resolveToolsForToolsets(
-        [sanitized],
-        this.context
-      );
-
-      // Register all resolved tools (direct + module-derived)
-      if (resolvedTools && resolvedTools.length > 0) {
-        const mapped = this.toolRegistry.mapAndValidate(
-          sanitized,
-          resolvedTools
-        );
-        for (const tool of mapped) {
-          this.registerSingleTool(tool, sanitized);
-          registeredTools.push(tool.name);
-        }
-      }
+      const toolCount = await this.resolveAndRegisterTools(sanitized, registeredTools);
 
       // Track state only after successful registration
       this.activeToolsets.add(sanitized);
@@ -131,28 +106,95 @@ export class DynamicToolManager {
         await this.notifyToolsChanged();
       }
 
-      return {
-        success: true,
-        message: `Toolset '${sanitized}' enabled successfully. Registered ${
-          resolvedTools?.length ?? 0
-        } tools.`,
-      };
+      return this.buildEnableResult(sanitized, toolCount);
     } catch (error) {
-      // Note: We cannot unregister tools from MCP server, but we can track the inconsistency
-      if (registeredTools.length > 0) {
-        console.warn(
-          `Partial failure enabling toolset '${sanitized}'. ` +
-            `${registeredTools.length} tools were registered but toolset activation failed. ` +
-            `Tools remain registered due to MCP limitations: ${registeredTools.join(", ")}`
-        );
-      }
-      // Don't add to activeToolsets since we failed
+      this.handlePartialFailure(sanitized, registeredTools);
       return {
         success: false,
         message: `Failed to enable toolset '${sanitized}': ${
           error instanceof Error ? error.message : "Unknown error"
         }`,
       };
+    }
+  }
+
+  /**
+   * @param toolsetName - The raw toolset name to validate
+   * @returns Early exit result if invalid, or null to continue
+   */
+  private validateToolsetForEnable(
+    toolsetName: string
+  ): { success: boolean; message: string } | null {
+    const validation = this.resolver.validateToolsetName(toolsetName);
+    if (!validation.isValid || !validation.sanitized) {
+      return {
+        success: false,
+        message: validation.error || "Unknown validation error",
+      };
+    }
+    if (this.activeToolsets.has(validation.sanitized)) {
+      return {
+        success: false,
+        message: `Toolset '${validation.sanitized}' is already enabled.`,
+      };
+    }
+    return null;
+  }
+
+  /**
+   * @param sanitized - The validated toolset name
+   * @param registeredTools - Mutable array tracking registered tool names for rollback
+   * @returns The number of tools resolved
+   */
+  private async resolveAndRegisterTools(
+    sanitized: string,
+    registeredTools: string[]
+  ): Promise<number> {
+    const resolvedTools = await this.resolver.resolveToolsForToolsets(
+      [sanitized],
+      this.context
+    );
+
+    if (resolvedTools && resolvedTools.length > 0) {
+      const mapped = this.toolRegistry.mapAndValidate(sanitized, resolvedTools);
+      for (const tool of mapped) {
+        this.registerSingleTool(tool, sanitized);
+        registeredTools.push(tool.name);
+      }
+    }
+
+    return resolvedTools?.length ?? 0;
+  }
+
+  /**
+   * @param sanitized - The toolset name
+   * @param toolCount - Number of tools registered
+   * @returns Success result object
+   */
+  private buildEnableResult(
+    sanitized: string,
+    toolCount: number
+  ): { success: boolean; message: string } {
+    return {
+      success: true,
+      message: `Toolset '${sanitized}' enabled successfully. Registered ${toolCount} tools.`,
+    };
+  }
+
+  /**
+   * @param sanitized - The toolset name that partially failed
+   * @param registeredTools - Tools that were registered before the failure
+   */
+  private handlePartialFailure(
+    sanitized: string,
+    registeredTools: string[]
+  ): void {
+    if (registeredTools.length > 0) {
+      console.warn(
+        `Partial failure enabling toolset '${sanitized}'. ` +
+          `${registeredTools.length} tools were registered but toolset activation failed. ` +
+          `Tools remain registered due to MCP limitations: ${registeredTools.join(", ")}`
+      );
     }
   }
 
