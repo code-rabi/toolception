@@ -3,60 +3,8 @@ import type {
   SessionRequestContext,
 } from "../types/index.js";
 import { createHash } from "node:crypto";
+import type { SessionContextResult } from "./session.types.js";
 
-/**
- * Result of session context resolution including the merged context
- * and a cache key suffix for differentiating sessions with different configs.
- */
-export interface SessionContextResult {
-  /**
-   * The merged context to pass to module loaders.
-   */
-  context: unknown;
-
-  /**
-   * A deterministic hash suffix based on the session config values.
-   * Used to differentiate cache entries: `${clientId}:${cacheKeySuffix}`
-   * Returns 'default' when no session config is present.
-   */
-  cacheKeySuffix: string;
-}
-
-/**
- * Resolves per-session context from request query parameters and merges
- * it with the base server context.
- *
- * Features:
- * - Parses query parameter (base64 or JSON encoded)
- * - Filters allowed keys (whitelist enforcement)
- * - Merges session context with base context (shallow or deep)
- * - Generates cache key suffix for session differentiation
- *
- * Security considerations:
- * - Always specify allowedKeys to whitelist permitted session config keys
- * - Invalid encoding silently returns empty session config (fail secure)
- * - Disallowed keys are filtered without logging (prevents info leakage)
- *
- * @example
- * ```typescript
- * const resolver = new SessionContextResolver({
- *   enabled: true,
- *   queryParam: {
- *     name: 'config',
- *     encoding: 'base64',
- *     allowedKeys: ['API_TOKEN', 'USER_ID'],
- *   },
- *   merge: 'shallow',
- * });
- *
- * const result = resolver.resolve(
- *   { clientId: 'client-1', headers: {}, query: { config: 'eyJBUElfVE9LRU4iOiJ0b2tlbiJ9' } },
- *   { baseValue: 'foo' }
- * );
- * // result.context = { baseValue: 'foo', API_TOKEN: 'token' }
- * // result.cacheKeySuffix = 'abc123...'
- * ```
- */
 export class SessionContextResolver {
   private readonly config: SessionContextConfig;
   private readonly queryParamName: string;
@@ -74,9 +22,19 @@ export class SessionContextResolver {
     this.mergeStrategy = config.merge ?? "shallow";
   }
 
+  static builder() {
+    const opts: Partial<SessionContextConfig> = {};
+    const builder = {
+      enabled(value: boolean) { opts.enabled = value; return builder; },
+      queryParam(value: SessionContextConfig["queryParam"]) { opts.queryParam = value; return builder; },
+      contextResolver(value: SessionContextConfig["contextResolver"]) { opts.contextResolver = value; return builder; },
+      merge(value: "shallow" | "deep") { opts.merge = value; return builder; },
+      build() { return new SessionContextResolver(opts as SessionContextConfig); },
+    };
+    return builder;
+  }
+
   /**
-   * Resolves the session context for a request.
-   *
    * @param request - The request context (clientId, headers, query)
    * @param baseContext - The base context from server configuration
    * @returns The resolved context and cache key suffix
@@ -126,12 +84,8 @@ export class SessionContextResolver {
   }
 
   /**
-   * Parses the session config from query parameters.
-   * Returns empty object on parse failure (fail secure).
-   *
    * @param query - Query parameters from the request
    * @returns Parsed and filtered config object
-   * @private
    */
   private parseQueryConfig(
     query: Record<string, string>
@@ -168,12 +122,8 @@ export class SessionContextResolver {
   }
 
   /**
-   * Filters the parsed config to only include allowed keys.
-   * If no allowedKeys whitelist is configured, returns the full object.
-   *
    * @param parsed - The parsed config object
    * @returns Filtered config with only allowed keys
-   * @private
    */
   private filterAllowedKeys(
     parsed: Record<string, unknown>
@@ -192,12 +142,9 @@ export class SessionContextResolver {
   }
 
   /**
-   * Merges the base context with the session config.
-   *
    * @param baseContext - The base context from server configuration
    * @param sessionConfig - The parsed session config
    * @returns Merged context
-   * @private
    */
   private mergeContexts(
     baseContext: unknown,
@@ -232,13 +179,9 @@ export class SessionContextResolver {
   }
 
   /**
-   * Performs a deep merge of two objects.
-   * Session config values override base context values.
-   *
    * @param base - The base object
    * @param override - The override object
    * @returns Deep merged object
-   * @private
    */
   private deepMerge(
     base: Record<string, unknown>,
@@ -272,12 +215,8 @@ export class SessionContextResolver {
   }
 
   /**
-   * Generates a deterministic cache key suffix based on the session config.
-   * Returns 'default' when no session config is present.
-   *
    * @param sessionConfig - The parsed session config
    * @returns Hash string or 'default'
-   * @private
    */
   private generateCacheKeySuffix(
     sessionConfig: Record<string, unknown>

@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { z } from "zod";
 import Fastify, { type FastifyInstance } from "fastify";
-import { registerCustomEndpoints } from "../src/http/endpointRegistration.js";
-import { defineEndpoint, definePermissionAwareEndpoint } from "../src/http/customEndpoints.js";
+import { registerCustomEndpoints, defineEndpoint, definePermissionAwareEndpoint } from "../src/http/http.utils.js";
 
 describe("Custom Endpoints", () => {
   let app: FastifyInstance;

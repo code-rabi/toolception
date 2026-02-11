@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validatePermissionConfig } from "../src/permissions/validatePermissionConfig.js";
+import { validatePermissionConfig } from "../src/permissions/permissions.utils.js";
 import type { PermissionConfig } from "../src/types/index.js";
 
 describe("validatePermissionConfig", () => {

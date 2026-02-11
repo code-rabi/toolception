@@ -4,7 +4,7 @@ import type { DynamicToolManager } from "../src/core/DynamicToolManager.js";
 import type {
   ClientRequestContext,
   PermissionAwareBundle,
-} from "../src/permissions/createPermissionAwareBundle.js";
+} from "../src/permissions/permissions.types.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import Fastify, { type FastifyInstance } from "fastify";
 

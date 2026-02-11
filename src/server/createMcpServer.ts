@@ -1,66 +1,16 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type {
-  ExposurePolicy,
-  Mode,
-  ModuleLoader,
-  SessionContextConfig,
-  ToolSetCatalog,
-} from "../types/index.js";
+import type { Mode } from "../types/index.js";
 import { ServerOrchestrator } from "../core/ServerOrchestrator.js";
 import {
   FastifyTransport,
-  type FastifyTransportOptions,
 } from "../http/FastifyTransport.js";
 import { SessionContextResolver } from "../session/SessionContextResolver.js";
-import { validateSessionContextConfig } from "../session/validateSessionContextConfig.js";
+import { validateSessionContextConfig } from "../session/session.utils.js";
 import { z } from "zod";
+import type { CreateMcpServerOptions } from "./server.types.js";
+import { startupConfigSchema } from "./server.utils.js";
 
-export interface CreateMcpServerOptions {
-  catalog: ToolSetCatalog;
-  moduleLoaders?: Record<string, ModuleLoader>;
-  exposurePolicy?: ExposurePolicy;
-  context?: unknown;
-  startup?: { mode?: Exclude<Mode, "ALL">; toolsets?: string[] | "ALL" };
-  registerMetaTools?: boolean;
-  http?: FastifyTransportOptions;
-  /**
-   * Factory to create an MCP server instance. Required.
-   * In DYNAMIC mode, a new instance is created per client bundle.
-   * In STATIC mode, a single instance is created and reused across bundles.
-   */
-  createServer: () => McpServer;
-  configSchema?: object;
-  /**
-   * Optional per-session context configuration.
-   * Enables extracting context from query parameters and merging with base context
-   * on a per-request basis. Useful for multi-tenant scenarios.
-   *
-   * @example
-   * ```typescript
-   * sessionContext: {
-   *   enabled: true,
-   *   queryParam: {
-   *     name: 'config',
-   *     encoding: 'base64',
-   *     allowedKeys: ['API_TOKEN', 'USER_ID'],
-   *   },
-   *   merge: 'shallow',
-   * }
-   * ```
-   */
-  sessionContext?: SessionContextConfig;
-}
-
-/**
- * Zod schema for validating startup configuration.
- * Uses strict mode to reject unknown properties like 'initialToolsets'.
- */
-const startupConfigSchema = z
-  .object({
-    mode: z.enum(["DYNAMIC", "STATIC"]).optional(),
-    toolsets: z.union([z.array(z.string()), z.literal("ALL")]).optional(),
-  })
-  .strict();
+export type { CreateMcpServerOptions } from "./server.types.js";
 
 export async function createMcpServer(options: CreateMcpServerOptions) {
   // Validate startup configuration if provided
@@ -85,7 +35,12 @@ export async function createMcpServer(options: CreateMcpServerOptions) {
   let sessionContextResolver: SessionContextResolver | undefined;
   if (options.sessionContext) {
     validateSessionContextConfig(options.sessionContext);
-    sessionContextResolver = new SessionContextResolver(options.sessionContext);
+    sessionContextResolver = SessionContextResolver.builder()
+      .enabled(options.sessionContext.enabled ?? true)
+      .queryParam(options.sessionContext.queryParam)
+      .contextResolver(options.sessionContext.contextResolver)
+      .merge(options.sessionContext.merge ?? "shallow")
+      .build();
 
     // Warn if sessionContext is used with STATIC mode (limited effect)
     if (mode === "STATIC" && options.sessionContext.enabled !== false) {
@@ -110,12 +65,6 @@ export async function createMcpServer(options: CreateMcpServerOptions) {
   const hasNotifierB = (s: unknown): s is NotifierB =>
     typeof (s as NotifierB)?.notifyToolsListChanged === "function";
 
-  /**
-   * Sends a tools list changed notification to the client.
-   * Logs warnings on failure instead of throwing.
-   * Suppresses "Not connected" errors as they're expected when no clients are connected.
-   * @param target - The MCP server instance
-   */
   const notifyToolsChanged = async (target: unknown) => {
     try {
       if (hasNotifierA(target)) {
@@ -138,19 +87,20 @@ export async function createMcpServer(options: CreateMcpServerOptions) {
     }
   };
 
-  const orchestrator = new ServerOrchestrator({
-    server: baseServer,
-    catalog: options.catalog,
-    moduleLoaders: options.moduleLoaders,
-    exposurePolicy: options.exposurePolicy,
-    context: options.context,
-    notifyToolsListChanged: async () => notifyToolsChanged(baseServer),
-    startup: options.startup,
-    registerMetaTools:
+  const orchestrator = ServerOrchestrator.builder()
+    .server(baseServer)
+    .catalog(options.catalog)
+    .moduleLoaders(options.moduleLoaders ?? {})
+    .exposurePolicy(options.exposurePolicy!)
+    .context(options.context)
+    .notifyToolsListChanged(async () => notifyToolsChanged(baseServer))
+    .startup(options.startup!)
+    .registerMetaTools(
       options.registerMetaTools !== undefined
         ? options.registerMetaTools
-        : mode === "DYNAMIC",
-  });
+        : mode === "DYNAMIC"
+    )
+    .build();
 
   // In STATIC mode, wait for initialization to complete before starting
   if (mode === "STATIC") {
@@ -171,19 +121,20 @@ export async function createMcpServer(options: CreateMcpServerOptions) {
         return { server: baseServer, orchestrator };
       }
       const createdServer: McpServer = options.createServer();
-      const createdOrchestrator = new ServerOrchestrator({
-        server: createdServer,
-        catalog: options.catalog,
-        moduleLoaders: options.moduleLoaders,
-        exposurePolicy: options.exposurePolicy,
-        context: effectiveContext,
-        notifyToolsListChanged: async () => notifyToolsChanged(createdServer),
-        startup: options.startup,
-        registerMetaTools:
+      const createdOrchestrator = ServerOrchestrator.builder()
+        .server(createdServer)
+        .catalog(options.catalog)
+        .moduleLoaders(options.moduleLoaders ?? {})
+        .exposurePolicy(options.exposurePolicy!)
+        .context(effectiveContext)
+        .notifyToolsListChanged(async () => notifyToolsChanged(createdServer))
+        .startup(options.startup!)
+        .registerMetaTools(
           options.registerMetaTools !== undefined
             ? options.registerMetaTools
-            : mode === "DYNAMIC",
-      });
+            : mode === "DYNAMIC"
+        )
+        .build();
       return { server: createdServer, orchestrator: createdOrchestrator };
     },
     options.http,

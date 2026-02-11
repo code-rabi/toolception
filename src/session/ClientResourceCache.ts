@@ -1,20 +1,4 @@
-export interface ClientResourceCacheOptions<T> {
-  maxSize?: number;
-  ttlMs?: number; // ms
-  pruneIntervalMs?: number;
-  /**
-   * Optional cleanup callback called when a resource is removed from the cache.
-   * Use this to close connections, clean up sessions, etc.
-   * @param key - The cache key being removed
-   * @param resource - The resource being removed
-   */
-  onEvict?: (key: string, resource: T) => void | Promise<void>;
-}
-
-interface Entry<T> {
-  resource: T;
-  lastAccessed: number;
-}
+import type { ClientResourceCacheOptions, Entry } from "./session.types.js";
 
 export class ClientResourceCache<T> {
   private storage = new Map<string, Entry<T>>();
@@ -30,6 +14,18 @@ export class ClientResourceCache<T> {
     this.onEvict = options.onEvict;
     const pruneEvery = options.pruneIntervalMs ?? 1000 * 60 * 10;
     this.pruneInterval = setInterval(() => this.pruneExpired(), pruneEvery);
+  }
+
+  static builder<T>() {
+    const opts: ClientResourceCacheOptions<T> = {};
+    const builder = {
+      maxSize(value: number) { opts.maxSize = value; return builder; },
+      ttlMs(value: number) { opts.ttlMs = value; return builder; },
+      pruneIntervalMs(value: number) { opts.pruneIntervalMs = value; return builder; },
+      onEvict(value: (key: string, resource: T) => void | Promise<void>) { opts.onEvict = value; return builder; },
+      build() { return new ClientResourceCache<T>(opts); },
+    };
+    return builder;
   }
 
   public getEntryCount(): number {
@@ -66,8 +62,6 @@ export class ClientResourceCache<T> {
   }
 
   /**
-   * Removes an entry from the cache.
-   * Calls the onEvict callback if configured.
    * @param key - The key to remove
    */
   public delete(key: string): void {
@@ -79,7 +73,6 @@ export class ClientResourceCache<T> {
   }
 
   /**
-   * Stops the background pruning interval and optionally clears all entries.
    * @param clearEntries - If true, also removes all entries and calls onEvict for each
    */
   public stop(clearEntries = false): void {
@@ -92,10 +85,6 @@ export class ClientResourceCache<T> {
     }
   }
 
-  /**
-   * Clears all entries from the cache.
-   * Calls onEvict for each entry being removed.
-   */
   public clear(): void {
     // Collect all entries first to avoid modification during iteration
     const entries = Array.from(this.storage.entries());
@@ -105,10 +94,6 @@ export class ClientResourceCache<T> {
     }
   }
 
-  /**
-   * Evicts the least recently used entry from the cache.
-   * @private
-   */
   private evictLeastRecentlyUsed(): void {
     const lruKey = this.storage.keys().next().value as string | undefined;
     if (lruKey) {
@@ -116,10 +101,6 @@ export class ClientResourceCache<T> {
     }
   }
 
-  /**
-   * Removes all expired entries from the cache.
-   * @private
-   */
   private pruneExpired(): void {
     const now = Date.now();
     const keysToDelete: string[] = [];
@@ -135,10 +116,8 @@ export class ClientResourceCache<T> {
   }
 
   /**
-   * Safely calls the evict callback, catching and logging any errors.
    * @param key - The key being evicted
    * @param resource - The resource being evicted
-   * @private
    */
   #callEvictCallback(key: string, resource: T): void {
     if (!this.onEvict) return;

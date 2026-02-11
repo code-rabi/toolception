@@ -10,17 +10,7 @@ import type {
   ToolSetCatalog,
 } from "../types/index.js";
 import { ToolRegistry } from "./ToolRegistry.js";
-
-export interface ServerOrchestratorOptions {
-  server: McpServer;
-  catalog: ToolSetCatalog;
-  moduleLoaders?: Record<string, ModuleLoader>;
-  exposurePolicy?: ExposurePolicy;
-  context?: unknown;
-  notifyToolsListChanged?: () => Promise<void> | void;
-  startup?: { mode?: Exclude<Mode, "ALL">; toolsets?: string[] | "ALL" };
-  registerMetaTools?: boolean;
-}
+import type { ServerOrchestratorOptions } from "./core.types.js";
 
 export class ServerOrchestrator {
   private readonly mode: Exclude<Mode, "ALL">;
@@ -31,26 +21,27 @@ export class ServerOrchestrator {
   private initError: Error | null = null;
 
   constructor(options: ServerOrchestratorOptions) {
-    this.toolsetValidator = new ToolsetValidator();
+    this.toolsetValidator = ToolsetValidator.builder().build();
     const startup = options.startup ?? {};
     const resolved = this.resolveStartupConfig(startup, options.catalog);
     this.mode = resolved.mode;
-    this.resolver = new ModuleResolver({
-      catalog: options.catalog,
-      moduleLoaders: options.moduleLoaders,
-    });
-    const toolRegistry = new ToolRegistry({
-      namespaceWithToolset:
-        options.exposurePolicy?.namespaceToolsWithSetKey ?? true,
-    });
-    this.manager = new DynamicToolManager({
-      server: options.server,
-      resolver: this.resolver,
-      context: options.context,
-      onToolsListChanged: options.notifyToolsListChanged,
-      exposurePolicy: options.exposurePolicy,
-      toolRegistry,
-    });
+    this.resolver = ModuleResolver.builder()
+      .catalog(options.catalog)
+      .moduleLoaders(options.moduleLoaders ?? {})
+      .build();
+    const toolRegistry = ToolRegistry.builder()
+      .namespaceWithToolset(
+        options.exposurePolicy?.namespaceToolsWithSetKey ?? true
+      )
+      .build();
+    this.manager = DynamicToolManager.builder()
+      .server(options.server)
+      .resolver(this.resolver)
+      .context(options.context)
+      .onToolsListChanged(options.notifyToolsListChanged as () => Promise<void> | void)
+      .exposurePolicy(options.exposurePolicy as ExposurePolicy)
+      .toolRegistry(toolRegistry)
+      .build();
 
     // Register meta-tools only if requested (default true)
     if (options.registerMetaTools !== false) {
@@ -62,12 +53,25 @@ export class ServerOrchestrator {
     this.initPromise = this.initializeToolsets(initial);
   }
 
+  static builder() {
+    const opts: Partial<ServerOrchestratorOptions> = {};
+    const builder = {
+      server(value: McpServer) { opts.server = value; return builder; },
+      catalog(value: ToolSetCatalog) { opts.catalog = value; return builder; },
+      moduleLoaders(value: Record<string, ModuleLoader>) { opts.moduleLoaders = value; return builder; },
+      exposurePolicy(value: ExposurePolicy) { opts.exposurePolicy = value; return builder; },
+      context(value: unknown) { opts.context = value; return builder; },
+      notifyToolsListChanged(value: () => Promise<void> | void) { opts.notifyToolsListChanged = value; return builder; },
+      startup(value: { mode?: Exclude<Mode, "ALL">; toolsets?: string[] | "ALL" }) { opts.startup = value; return builder; },
+      registerMetaTools(value: boolean) { opts.registerMetaTools = value; return builder; },
+      build() { return new ServerOrchestrator(opts as ServerOrchestratorOptions); },
+    };
+    return builder;
+  }
+
   /**
-   * Initializes toolsets asynchronously during construction.
-   * Stores any errors for later retrieval via ensureReady().
    * @param initial - The toolsets to initialize or "ALL"
    * @returns Promise that resolves when initialization is complete
-   * @private
    */
   private async initializeToolsets(
     initial: string[] | "ALL" | undefined
@@ -85,11 +89,6 @@ export class ServerOrchestrator {
     }
   }
 
-  /**
-   * Waits for the orchestrator to be fully initialized.
-   * Call this before using the orchestrator to ensure all toolsets are loaded.
-   * @throws {Error} If initialization failed
-   */
   public async ensureReady(): Promise<void> {
     await this.initPromise;
     if (this.initError) {
@@ -97,11 +96,6 @@ export class ServerOrchestrator {
     }
   }
 
-  /**
-   * Checks if the orchestrator has finished initialization.
-   * Does not throw on error - use ensureReady() for that.
-   * @returns Promise that resolves to true if ready, false if initialization failed
-   */
   public async isReady(): Promise<boolean> {
     await this.initPromise;
     return this.initError === null;

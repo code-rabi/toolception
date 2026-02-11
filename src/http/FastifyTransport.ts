@@ -14,37 +14,17 @@ import type { SessionRequestContext } from "../types/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { CustomEndpointDefinition } from "./customEndpoints.js";
-import { registerCustomEndpoints } from "./endpointRegistration.js";
+import type {
+  FastifyTransportOptions,
+  CreateBundleCallback,
+  CustomEndpointDefinition,
+} from "./http.types.js";
+import { registerCustomEndpoints } from "./http.utils.js";
 
 const mcpClientIdSchema = z
   .string({ message: "Missing required mcp-client-id header" })
   .trim()
   .min(1, "mcp-client-id header must not be empty");
-
-export interface FastifyTransportOptions {
-  host?: string;
-  port?: number;
-  basePath?: string; // e.g. "/" or "/api"
-  cors?: boolean;
-  logger?: boolean;
-  // Optional DI: provide a Fastify instance (e.g., for tests). If provided, start() will not listen.
-  app?: FastifyInstance;
-  /**
-   * Optional custom HTTP endpoints to register alongside MCP protocol endpoints.
-   * Allows adding REST-like endpoints with Zod validation and type inference.
-   */
-  customEndpoints?: CustomEndpointDefinition[];
-}
-
-/**
- * Callback type for creating a server bundle.
- * Accepts an optional merged context for per-session context support.
- */
-export type CreateBundleCallback = (mergedContext?: unknown) => {
-  server: McpServer;
-  orchestrator: ServerOrchestrator;
-};
 
 export class FastifyTransport {
   private readonly options: {
@@ -97,6 +77,31 @@ export class FastifyTransport {
       customEndpoints: options.customEndpoints,
     };
     this.configSchema = configSchema;
+  }
+
+  static builder() {
+    let _defaultManager: DynamicToolManager;
+    let _createBundle: CreateBundleCallback;
+    const opts: FastifyTransportOptions = {};
+    let _configSchema: object | undefined;
+    let _sessionContextResolver: SessionContextResolver | undefined;
+    let _baseContext: unknown;
+    const builder = {
+      defaultManager(value: DynamicToolManager) { _defaultManager = value; return builder; },
+      createBundle(value: CreateBundleCallback) { _createBundle = value; return builder; },
+      host(value: string) { opts.host = value; return builder; },
+      port(value: number) { opts.port = value; return builder; },
+      basePath(value: string) { opts.basePath = value; return builder; },
+      cors(value: boolean) { opts.cors = value; return builder; },
+      logger(value: boolean) { opts.logger = value; return builder; },
+      app(value: FastifyInstance) { opts.app = value; return builder; },
+      customEndpoints(value: CustomEndpointDefinition[]) { opts.customEndpoints = value; return builder; },
+      configSchema(value: object) { _configSchema = value; return builder; },
+      sessionContextResolver(value: SessionContextResolver) { _sessionContextResolver = value; return builder; },
+      baseContext(value: unknown) { _baseContext = value; return builder; },
+      build() { return new FastifyTransport(_defaultManager, _createBundle, opts, _configSchema, _sessionContextResolver, _baseContext); },
+    };
+    return builder;
   }
 
   public async start(): Promise<void> {
@@ -301,10 +306,6 @@ export class FastifyTransport {
     this.app = app;
   }
 
-  /**
-   * Stops the Fastify server and cleans up all resources.
-   * Closes all client sessions and clears the cache.
-   */
   public async stop(): Promise<void> {
     if (!this.app) return;
 
@@ -318,10 +319,7 @@ export class FastifyTransport {
   }
 
   /**
-   * Cleans up resources associated with a client bundle.
-   * Closes all sessions within the bundle.
    * @param bundle - The client bundle to clean up
-   * @private
    */
   private cleanupBundle(bundle: {
     server: McpServer;
@@ -343,14 +341,9 @@ export class FastifyTransport {
   }
 
   /**
-   * Resolves the session context and generates a cache key for the request.
-   * If a session context resolver is configured, it extracts query parameters
-   * and merges session-specific context with the base context.
-   *
    * @param req - The Fastify request
    * @param clientId - The client identifier
    * @returns Object with cache key and merged context
-   * @private
    */
   private resolveSessionContext(
     req: FastifyRequest,
@@ -390,12 +383,8 @@ export class FastifyTransport {
   }
 
   /**
-   * Extracts headers from a Fastify request as a Record.
-   * Normalizes header names to lowercase.
-   *
    * @param req - The Fastify request
    * @returns Headers as a string record
-   * @private
    */
   private extractHeaders(req: FastifyRequest): Record<string, string> {
     const headers: Record<string, string> = {};
@@ -410,11 +399,8 @@ export class FastifyTransport {
   }
 
   /**
-   * Extracts query parameters from a Fastify request as a Record.
-   *
    * @param req - The Fastify request
    * @returns Query parameters as a string record
-   * @private
    */
   private extractQuery(req: FastifyRequest): Record<string, string> {
     const query: Record<string, string> = {};

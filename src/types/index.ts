@@ -1,4 +1,4 @@
-import type { CreateMcpServerOptions } from "../server/createMcpServer.js";
+import type { CreateMcpServerOptions } from "../server/server.types.js";
 
 // Loader concepts are internal-only; no public types for loaders
 

@@ -1,8 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import {
-  createPermissionAwareBundle,
-  type ClientRequestContext,
-} from "../src/permissions/createPermissionAwareBundle.js";
+import { createPermissionAwareBundle } from "../src/permissions/permissions.utils.js";
+import type { ClientRequestContext } from "../src/permissions/permissions.types.js";
 import { PermissionResolver } from "../src/permissions/PermissionResolver.js";
 import type { PermissionConfig } from "../src/types/index.js";
 import { createFakeMcpServer } from "./helpers/fakes.js";

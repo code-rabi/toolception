@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateSessionContextConfig } from "../src/session/validateSessionContextConfig.js";
+import { validateSessionContextConfig } from "../src/session/session.utils.js";
 import type { SessionContextConfig } from "../src/types/index.js";
 
 describe("validateSessionContextConfig", () => {

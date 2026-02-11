@@ -4,17 +4,8 @@ import type {
   McpToolDefinition,
   ModuleLoader,
 } from "../types/index.js";
-
-/**
- * Reserved toolset keys that cannot be used in user catalogs.
- * Must match META_TOOLSET_KEY in src/meta/registerMetaTools.ts
- */
-const RESERVED_TOOLSET_KEYS = ["_meta"];
-
-export interface ModuleResolverOptions {
-  catalog: ToolSetCatalog;
-  moduleLoaders?: Record<string, ModuleLoader>;
-}
+import type { ModuleResolverOptions } from "./mode.types.js";
+import { RESERVED_TOOLSET_KEYS } from "./mode.types.js";
 
 export class ModuleResolver {
   private readonly catalog: ToolSetCatalog;
@@ -31,6 +22,16 @@ export class ModuleResolver {
     }
     this.catalog = options.catalog;
     this.moduleLoaders = options.moduleLoaders ?? {};
+  }
+
+  static builder() {
+    const opts: Partial<ModuleResolverOptions> = {};
+    const builder = {
+      catalog(value: ToolSetCatalog) { opts.catalog = value; return builder; },
+      moduleLoaders(value: Record<string, ModuleLoader>) { opts.moduleLoaders = value; return builder; },
+      build() { return new ModuleResolver(opts as ModuleResolverOptions); },
+    };
+    return builder;
   }
 
   public getAvailableToolsets(): string[] {

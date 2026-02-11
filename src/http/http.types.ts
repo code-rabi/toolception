@@ -1,4 +1,31 @@
 import { z } from "zod";
+import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ServerOrchestrator } from "../core/ServerOrchestrator.js";
+import type { SessionContextResolver } from "../session/SessionContextResolver.js";
+
+export interface FastifyTransportOptions {
+  host?: string;
+  port?: number;
+  basePath?: string;
+  cors?: boolean;
+  logger?: boolean;
+  app?: FastifyInstance;
+  /**
+   * Optional custom HTTP endpoints to register alongside MCP protocol endpoints.
+   * Allows adding REST-like endpoints with Zod validation and type inference.
+   */
+  customEndpoints?: CustomEndpointDefinition[];
+}
+
+/**
+ * Callback type for creating a server bundle.
+ * Accepts an optional merged context for per-session context support.
+ */
+export type CreateBundleCallback = (mergedContext?: unknown) => {
+  server: McpServer;
+  orchestrator: ServerOrchestrator;
+};
 
 /**
  * Supported HTTP methods for custom endpoints
@@ -215,108 +242,14 @@ export interface EndpointErrorResponse {
 }
 
 /**
- * Helper function to create type-safe custom endpoints with automatic type inference.
- * Provides better IntelliSense and type checking for endpoint definitions.
- *
- * @template TBody - Zod schema for request body
- * @template TQuery - Zod schema for query parameters
- * @template TParams - Zod schema for path parameters
- * @template TResponse - Zod schema for response
- *
- * @param definition - Endpoint definition with schemas and handler
- * @returns The same endpoint definition with full type inference
- *
- * @example
- * ```typescript
- * import { z } from "zod";
- * import { defineEndpoint } from "toolception";
- *
- * const getUsersEndpoint = defineEndpoint({
- *   method: "GET",
- *   path: "/users",
- *   querySchema: z.object({
- *     limit: z.coerce.number().int().positive().default(10),
- *     role: z.enum(["admin", "user"]).optional(),
- *   }),
- *   responseSchema: z.object({
- *     users: z.array(z.object({
- *       id: z.string(),
- *       name: z.string(),
- *     })),
- *     total: z.number(),
- *   }),
- *   handler: async (req) => {
- *     // req.query is fully typed: { limit: number, role?: "admin" | "user" }
- *     const { limit, role } = req.query;
- *
- *     return {
- *       users: [{ id: "1", name: "Alice" }],
- *       total: 1,
- *     };
- *   },
- * });
- * ```
+ * Options for registering custom endpoints
  */
-export function defineEndpoint<
-  TBody extends z.ZodTypeAny = z.ZodNever,
-  TQuery extends z.ZodTypeAny = z.ZodNever,
-  TParams extends z.ZodTypeAny = z.ZodNever,
-  TResponse extends z.ZodTypeAny = z.ZodAny
->(
-  definition: CustomEndpointDefinition<TBody, TQuery, TParams, TResponse>
-): CustomEndpointDefinition<TBody, TQuery, TParams, TResponse> {
-  return definition;
-}
-
-/**
- * Helper function to create permission-aware custom endpoints for permission-based servers.
- * Similar to defineEndpoint but with access to permission context in the handler.
- *
- * @template TBody - Zod schema for request body
- * @template TQuery - Zod schema for query parameters
- * @template TParams - Zod schema for path parameters
- * @template TResponse - Zod schema for response
- *
- * @param definition - Endpoint definition with permission-aware handler
- * @returns Endpoint definition compatible with permission-based servers
- *
- * @example
- * ```typescript
- * import { definePermissionAwareEndpoint } from "toolception";
- *
- * const statsEndpoint = definePermissionAwareEndpoint({
- *   method: "GET",
- *   path: "/my-permissions",
- *   responseSchema: z.object({
- *     toolsets: z.array(z.string()),
- *     count: z.number(),
- *   }),
- *   handler: async (req) => {
- *     // req.allowedToolsets and req.failedToolsets are available
- *     return {
- *       toolsets: req.allowedToolsets,
- *       count: req.allowedToolsets.length,
- *     };
- *   },
- * });
- * ```
- */
-export function definePermissionAwareEndpoint<
-  TBody extends z.ZodTypeAny = z.ZodNever,
-  TQuery extends z.ZodTypeAny = z.ZodNever,
-  TParams extends z.ZodTypeAny = z.ZodNever,
-  TResponse extends z.ZodTypeAny = z.ZodAny
->(definition: {
-  method: HttpMethod;
-  path: string;
-  bodySchema?: TBody;
-  querySchema?: TQuery;
-  paramsSchema?: TParams;
-  responseSchema?: TResponse;
-  handler: PermissionAwareEndpointHandler<TBody, TQuery, TParams, TResponse>;
-  description?: string;
-}): CustomEndpointDefinition<TBody, TQuery, TParams, TResponse> {
-  // Internal conversion: permission-aware handler is compatible with standard handler
-  // The permission fields will be injected by the registration logic
-  return definition as any;
+export interface RegisterCustomEndpointsOptions {
+  /**
+   * Optional function to extract additional context for each request.
+   * Used by permission-aware transport to inject permission data.
+   */
+  contextExtractor?: (
+    req: FastifyRequest
+  ) => Promise<Record<string, any>> | Record<string, any>;
 }

@@ -7,15 +7,7 @@ import type {
 } from "../types/index.js";
 import { ModuleResolver } from "../mode/ModuleResolver.js";
 import { ToolRegistry } from "./ToolRegistry.js";
-
-export interface DynamicToolManagerOptions {
-  server: McpServer;
-  resolver: ModuleResolver;
-  context?: unknown;
-  onToolsListChanged?: () => Promise<void> | void;
-  exposurePolicy?: ExposurePolicy;
-  toolRegistry?: ToolRegistry;
-}
+import type { DynamicToolManagerOptions } from "./core.types.js";
 
 export class DynamicToolManager {
   private readonly server: McpServer;
@@ -34,14 +26,25 @@ export class DynamicToolManager {
     this.onToolsListChanged = options.onToolsListChanged;
     this.exposurePolicy = options.exposurePolicy;
     this.toolRegistry =
-      options.toolRegistry ?? new ToolRegistry({ namespaceWithToolset: true });
+      options.toolRegistry ?? ToolRegistry.builder().namespaceWithToolset(true).build();
+  }
+
+  static builder() {
+    const opts: Partial<DynamicToolManagerOptions> = {};
+    const builder = {
+      server(value: McpServer) { opts.server = value; return builder; },
+      resolver(value: ModuleResolver) { opts.resolver = value; return builder; },
+      context(value: unknown) { opts.context = value; return builder; },
+      onToolsListChanged(value: () => Promise<void> | void) { opts.onToolsListChanged = value; return builder; },
+      exposurePolicy(value: ExposurePolicy) { opts.exposurePolicy = value; return builder; },
+      toolRegistry(value: ToolRegistry) { opts.toolRegistry = value; return builder; },
+      build() { return new DynamicToolManager(opts as DynamicToolManagerOptions); },
+    };
+    return builder;
   }
 
   /**
-   * Sends a tool list change notification if configured.
-   * Logs warnings on failure instead of throwing.
    * @returns Promise that resolves when notification is sent (or skipped)
-   * @private
    */
   private async notifyToolsChanged(): Promise<void> {
     if (!this.onToolsListChanged) return;
@@ -70,9 +73,8 @@ export class DynamicToolManager {
 
   /**
    * Enables a single toolset by name.
-   * Validates the toolset, checks exposure policies, resolves tools, and registers them.
    * @param toolsetName - The name of the toolset to enable
-   * @param skipNotification - If true, skips the tool list change notification (for batch operations)
+   * @param skipNotification - If true, skips the tool list change notification
    * @returns Result object with success status and message
    */
   public async enableToolset(
@@ -155,10 +157,8 @@ export class DynamicToolManager {
   }
 
   /**
-   * Checks if a toolset is allowed by the exposure policy.
    * @param toolsetName - The sanitized toolset name to check
    * @returns Object indicating if allowed and reason message if not
-   * @private
    */
   private checkExposurePolicy(toolsetName: string): {
     allowed: boolean;
@@ -199,10 +199,8 @@ export class DynamicToolManager {
   }
 
   /**
-   * Registers a single tool with the MCP server.
    * @param tool - The tool definition to register
    * @param toolsetKey - The toolset key for tracking
-   * @private
    */
   private registerSingleTool(tool: McpToolDefinition, toolsetKey: string): void {
     // Only pass annotations if they exist and are not empty
@@ -234,8 +232,6 @@ export class DynamicToolManager {
   }
 
   /**
-   * Disables a toolset by name.
-   * Note: Due to MCP limitations, tools remain registered but the toolset is marked inactive.
    * @param toolsetName - The name of the toolset to disable
    * @returns Result object with success status and message
    */
@@ -286,8 +282,6 @@ export class DynamicToolManager {
   }
 
   /**
-   * Enables multiple toolsets in a batch operation.
-   * Sends a single notification after all toolsets are processed.
    * @param toolsetNames - Array of toolset names to enable
    * @returns Result object with overall success status and individual results
    */
@@ -340,7 +334,6 @@ export class DynamicToolManager {
   }
 
   /**
-   * Enables all available toolsets in a batch operation.
    * @returns Result object with overall success status and individual results
    */
   public async enableAllToolsets(): Promise<{
