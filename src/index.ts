@@ -2,7 +2,7 @@
 
 // Standard MCP server creation
 export { createMcpServer } from "./server/createMcpServer.js";
-export type { CreateMcpServerOptions } from "./server/createMcpServer.js";
+export type { CreateMcpServerOptions, CreatePermissionBasedMcpServerOptions, McpServerHandle } from "./server/server.types.js";
 
 // Permission-based MCP server creation (separate API for per-client toolset access control)
 export { createPermissionBasedMcpServer } from "./server/createPermissionBasedMcpServer.js";
@@ -16,14 +16,13 @@ export type {
   Mode,
   ModuleLoader,
   PermissionConfig,
-  CreatePermissionBasedMcpServerOptions,
   SessionContextConfig,
   SessionRequestContext,
 } from "./types/index.js";
 
 // Session context support
 export { SessionContextResolver } from "./session/SessionContextResolver.js";
-export type { SessionContextResult } from "./session/SessionContextResolver.js";
+export type { SessionContextResult } from "./session/session.types.js";
 
 // Custom endpoint support
 export type {
@@ -34,9 +33,9 @@ export type {
   PermissionAwareEndpointHandler,
   HttpMethod,
   EndpointErrorResponse,
-} from "./http/customEndpoints.js";
+} from "./http/http.types.js";
 
 export {
   defineEndpoint,
   definePermissionAwareEndpoint,
-} from "./http/customEndpoints.js";
+} from "./http/http.utils.js";

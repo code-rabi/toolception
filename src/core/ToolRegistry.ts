@@ -1,9 +1,6 @@
 import type { McpToolDefinition } from "../types/index.js";
 import { ToolingError } from "../errors/ToolingError.js";
-
-export interface ToolRegistryOptions {
-  namespaceWithToolset?: boolean;
-}
+import type { ToolRegistryOptions } from "./core.types.js";
 
 export class ToolRegistry {
   private readonly options: Required<ToolRegistryOptions>;
@@ -14,6 +11,15 @@ export class ToolRegistry {
     this.options = {
       namespaceWithToolset: options.namespaceWithToolset ?? true,
     };
+  }
+
+  static builder() {
+    const opts: ToolRegistryOptions = {};
+    const builder = {
+      namespaceWithToolset(value: boolean) { opts.namespaceWithToolset = value; return builder; },
+      build() { return new ToolRegistry(opts); },
+    };
+    return builder;
   }
 
   public getSafeName(toolsetKey: string, toolName: string): string {

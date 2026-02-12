@@ -4,7 +4,7 @@ import type { DynamicToolManager } from "../src/core/DynamicToolManager.js";
 import type {
   ClientRequestContext,
   PermissionAwareBundle,
-} from "../src/permissions/createPermissionAwareBundle.js";
+} from "../src/permissions/permissions.types.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import Fastify, { type FastifyInstance } from "fastify";
 
@@ -78,31 +78,32 @@ describe("PermissionAwareFastifyTransport", () => {
       await transport.stop();
     });
 
-    it("generates anonymous client ID when header is missing", async () => {
-      const capturedContexts: ClientRequestContext[] = [];
-      const spyCreateBundle = vi.fn(
-        async (context: ClientRequestContext): Promise<PermissionAwareBundle> => {
-          capturedContexts.push(context);
-          return {
-            server: mockServer,
-            orchestrator: mockOrchestrator,
-            allowedToolsets: [],
-          };
-        }
-      );
-
+    it("rejects POST /mcp without mcp-client-id header", async () => {
+      const app = Fastify({ logger: false });
       const transport = new PermissionAwareFastifyTransport(
         mockManager,
-        spyCreateBundle,
-        { app: Fastify({ logger: false }) }
+        mockCreateBundle,
+        { app }
       );
 
       await transport.start();
-      await transport.stop();
 
-      // We can't easily test the POST handler without making actual HTTP requests,
-      // but we've verified the transport initializes correctly
-      expect(spyCreateBundle).toBeDefined();
+      const res = await app.inject({
+        method: "POST",
+        url: "/mcp",
+        headers: {},
+        payload: {
+          jsonrpc: "2.0",
+          method: "initialize",
+          params: {},
+          id: 1,
+        },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error.code).toBe(-32600);
+      expect(res.json().error.message).toContain("mcp-client-id");
+
+      await transport.stop();
     });
 
     it("passes headers to bundle creator", async () => {
@@ -149,7 +150,7 @@ describe("PermissionAwareFastifyTransport", () => {
       expect(createBundleSpy).toBeDefined();
     });
 
-    it("caches bundle for non-anonymous clients", async () => {
+    it("caches bundle for clients", async () => {
       const createBundleSpy = vi.fn(mockCreateBundle);
 
       const transport = new PermissionAwareFastifyTransport(
@@ -165,20 +166,31 @@ describe("PermissionAwareFastifyTransport", () => {
       expect(createBundleSpy).toBeDefined();
     });
 
-    it("does not cache bundle for anonymous clients", async () => {
-      const createBundleSpy = vi.fn(mockCreateBundle);
-
+    it("rejects POST /mcp with whitespace-only mcp-client-id", async () => {
+      const app = Fastify({ logger: false });
       const transport = new PermissionAwareFastifyTransport(
         mockManager,
-        createBundleSpy,
-        { app: Fastify({ logger: false }) }
+        mockCreateBundle,
+        { app }
       );
 
       await transport.start();
-      await transport.stop();
 
-      // Anonymous clients (anon-*) are not cached
-      expect(createBundleSpy).toBeDefined();
+      const res = await app.inject({
+        method: "POST",
+        url: "/mcp",
+        headers: { "mcp-client-id": "   " },
+        payload: {
+          jsonrpc: "2.0",
+          method: "initialize",
+          params: {},
+          id: 1,
+        },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error.code).toBe(-32600);
+
+      await transport.stop();
     });
   });
 

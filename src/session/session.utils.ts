@@ -5,7 +5,6 @@ import type { SessionContextConfig } from "../types/index.js";
  * Throws descriptive errors for any validation failures.
  *
  * @param config - The session context configuration to validate
- * @throws {Error} If the configuration is invalid or has incorrect types
  */
 export function validateSessionContextConfig(config: SessionContextConfig): void {
   validateConfigExists(config);
@@ -16,11 +15,7 @@ export function validateSessionContextConfig(config: SessionContextConfig): void
 }
 
 /**
- * Validates that the configuration object exists and is an object.
- *
  * @param config - The session context configuration to validate
- * @throws {Error} If config is null, undefined, or not an object
- * @private
  */
 function validateConfigExists(config: SessionContextConfig): void {
   if (!config || typeof config !== "object") {
@@ -31,11 +26,7 @@ function validateConfigExists(config: SessionContextConfig): void {
 }
 
 /**
- * Validates the enabled field if provided.
- *
  * @param config - The session context configuration to validate
- * @throws {Error} If enabled is not a boolean
- * @private
  */
 function validateEnabledField(config: SessionContextConfig): void {
   if (config.enabled === undefined) {
@@ -50,11 +41,7 @@ function validateEnabledField(config: SessionContextConfig): void {
 }
 
 /**
- * Validates the queryParam configuration if provided.
- *
  * @param config - The session context configuration to validate
- * @throws {Error} If queryParam fields have invalid types or values
- * @private
  */
 function validateQueryParamConfig(config: SessionContextConfig): void {
   if (config.queryParam === undefined) {
@@ -105,11 +92,7 @@ function validateQueryParamConfig(config: SessionContextConfig): void {
 }
 
 /**
- * Validates the contextResolver if provided.
- *
  * @param config - The session context configuration to validate
- * @throws {Error} If contextResolver is not a function
- * @private
  */
 function validateContextResolver(config: SessionContextConfig): void {
   if (config.contextResolver === undefined) {
@@ -124,11 +107,7 @@ function validateContextResolver(config: SessionContextConfig): void {
 }
 
 /**
- * Validates the merge strategy if provided.
- *
  * @param config - The session context configuration to validate
- * @throws {Error} If merge is not 'shallow' or 'deep'
- * @private
  */
 function validateMergeStrategy(config: SessionContextConfig): void {
   if (config.merge === undefined) {

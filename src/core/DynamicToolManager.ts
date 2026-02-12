@@ -7,15 +7,7 @@ import type {
 } from "../types/index.js";
 import { ModuleResolver } from "../mode/ModuleResolver.js";
 import { ToolRegistry } from "./ToolRegistry.js";
-
-export interface DynamicToolManagerOptions {
-  server: McpServer;
-  resolver: ModuleResolver;
-  context?: unknown;
-  onToolsListChanged?: () => Promise<void> | void;
-  exposurePolicy?: ExposurePolicy;
-  toolRegistry?: ToolRegistry;
-}
+import type { DynamicToolManagerOptions } from "./core.types.js";
 
 export class DynamicToolManager {
   private readonly server: McpServer;
@@ -34,14 +26,25 @@ export class DynamicToolManager {
     this.onToolsListChanged = options.onToolsListChanged;
     this.exposurePolicy = options.exposurePolicy;
     this.toolRegistry =
-      options.toolRegistry ?? new ToolRegistry({ namespaceWithToolset: true });
+      options.toolRegistry ?? ToolRegistry.builder().namespaceWithToolset(true).build();
+  }
+
+  static builder() {
+    const opts: Partial<DynamicToolManagerOptions> = {};
+    const builder = {
+      server(value: McpServer) { opts.server = value; return builder; },
+      resolver(value: ModuleResolver) { opts.resolver = value; return builder; },
+      context(value: unknown) { opts.context = value; return builder; },
+      onToolsListChanged(value: () => Promise<void> | void) { opts.onToolsListChanged = value; return builder; },
+      exposurePolicy(value: ExposurePolicy) { opts.exposurePolicy = value; return builder; },
+      toolRegistry(value: ToolRegistry) { opts.toolRegistry = value; return builder; },
+      build() { return new DynamicToolManager(opts as DynamicToolManagerOptions); },
+    };
+    return builder;
   }
 
   /**
-   * Sends a tool list change notification if configured.
-   * Logs warnings on failure instead of throwing.
    * @returns Promise that resolves when notification is sent (or skipped)
-   * @private
    */
   private async notifyToolsChanged(): Promise<void> {
     if (!this.onToolsListChanged) return;
@@ -70,29 +73,18 @@ export class DynamicToolManager {
 
   /**
    * Enables a single toolset by name.
-   * Validates the toolset, checks exposure policies, resolves tools, and registers them.
    * @param toolsetName - The name of the toolset to enable
-   * @param skipNotification - If true, skips the tool list change notification (for batch operations)
+   * @param skipNotification - If true, skips the tool list change notification
    * @returns Result object with success status and message
    */
   public async enableToolset(
     toolsetName: string,
     skipNotification = false
   ): Promise<{ success: boolean; message: string }> {
-    const validation = this.resolver.validateToolsetName(toolsetName);
-    if (!validation.isValid || !validation.sanitized) {
-      return {
-        success: false,
-        message: validation.error || "Unknown validation error",
-      };
-    }
-    const sanitized = validation.sanitized;
-    if (this.activeToolsets.has(sanitized)) {
-      return {
-        success: false,
-        message: `Toolset '${sanitized}' is already enabled.`,
-      };
-    }
+    const validation = this.validateToolsetForEnable(toolsetName);
+    if ("message" in validation) return validation;
+
+    const { sanitized } = validation;
 
     // Check exposure policies BEFORE resolving tools to fail fast
     const policyCheck = this.checkExposurePolicy(sanitized);
@@ -104,22 +96,7 @@ export class DynamicToolManager {
     const registeredTools: string[] = [];
 
     try {
-      const resolvedTools = await this.resolver.resolveToolsForToolsets(
-        [sanitized],
-        this.context
-      );
-
-      // Register all resolved tools (direct + module-derived)
-      if (resolvedTools && resolvedTools.length > 0) {
-        const mapped = this.toolRegistry.mapAndValidate(
-          sanitized,
-          resolvedTools
-        );
-        for (const tool of mapped) {
-          this.registerSingleTool(tool, sanitized);
-          registeredTools.push(tool.name);
-        }
-      }
+      const toolCount = await this.resolveAndRegisterTools(sanitized, registeredTools);
 
       // Track state only after successful registration
       this.activeToolsets.add(sanitized);
@@ -129,22 +106,9 @@ export class DynamicToolManager {
         await this.notifyToolsChanged();
       }
 
-      return {
-        success: true,
-        message: `Toolset '${sanitized}' enabled successfully. Registered ${
-          resolvedTools?.length ?? 0
-        } tools.`,
-      };
+      return this.buildEnableResult(sanitized, toolCount);
     } catch (error) {
-      // Note: We cannot unregister tools from MCP server, but we can track the inconsistency
-      if (registeredTools.length > 0) {
-        console.warn(
-          `Partial failure enabling toolset '${sanitized}'. ` +
-            `${registeredTools.length} tools were registered but toolset activation failed. ` +
-            `Tools remain registered due to MCP limitations: ${registeredTools.join(", ")}`
-        );
-      }
-      // Don't add to activeToolsets since we failed
+      this.handlePartialFailure(sanitized, registeredTools);
       return {
         success: false,
         message: `Failed to enable toolset '${sanitized}': ${
@@ -155,10 +119,88 @@ export class DynamicToolManager {
   }
 
   /**
-   * Checks if a toolset is allowed by the exposure policy.
+   * @param toolsetName - The raw toolset name to validate
+   * @returns Error result if invalid, or `{ sanitized }` to continue
+   */
+  private validateToolsetForEnable(
+    toolsetName: string
+  ): { success: boolean; message: string } | { sanitized: string } {
+    const validation = this.resolver.validateToolsetName(toolsetName);
+    if (!validation.isValid || !validation.sanitized) {
+      return {
+        success: false,
+        message: validation.error || "Unknown validation error",
+      };
+    }
+    if (this.activeToolsets.has(validation.sanitized)) {
+      return {
+        success: false,
+        message: `Toolset '${validation.sanitized}' is already enabled.`,
+      };
+    }
+    return { sanitized: validation.sanitized };
+  }
+
+  /**
+   * @param sanitized - The validated toolset name
+   * @param registeredTools - Mutable array tracking registered tool names for rollback
+   * @returns The number of tools resolved
+   */
+  private async resolveAndRegisterTools(
+    sanitized: string,
+    registeredTools: string[]
+  ): Promise<number> {
+    const resolvedTools = await this.resolver.resolveToolsForToolsets(
+      [sanitized],
+      this.context
+    );
+
+    if (resolvedTools && resolvedTools.length > 0) {
+      const mapped = this.toolRegistry.mapAndValidate(sanitized, resolvedTools);
+      for (const tool of mapped) {
+        this.registerSingleTool(tool, sanitized);
+        registeredTools.push(tool.name);
+      }
+    }
+
+    return resolvedTools?.length ?? 0;
+  }
+
+  /**
+   * @param sanitized - The toolset name
+   * @param toolCount - Number of tools registered
+   * @returns Success result object
+   */
+  private buildEnableResult(
+    sanitized: string,
+    toolCount: number
+  ): { success: boolean; message: string } {
+    return {
+      success: true,
+      message: `Toolset '${sanitized}' enabled successfully. Registered ${toolCount} tools.`,
+    };
+  }
+
+  /**
+   * @param sanitized - The toolset name that partially failed
+   * @param registeredTools - Tools that were registered before the failure
+   */
+  private handlePartialFailure(
+    sanitized: string,
+    registeredTools: string[]
+  ): void {
+    if (registeredTools.length > 0) {
+      console.warn(
+        `Partial failure enabling toolset '${sanitized}'. ` +
+          `${registeredTools.length} tools were registered but toolset activation failed. ` +
+          `Tools remain registered due to MCP limitations: ${registeredTools.join(", ")}`
+      );
+    }
+  }
+
+  /**
    * @param toolsetName - The sanitized toolset name to check
    * @returns Object indicating if allowed and reason message if not
-   * @private
    */
   private checkExposurePolicy(toolsetName: string): {
     allowed: boolean;
@@ -199,10 +241,8 @@ export class DynamicToolManager {
   }
 
   /**
-   * Registers a single tool with the MCP server.
    * @param tool - The tool definition to register
    * @param toolsetKey - The toolset key for tracking
-   * @private
    */
   private registerSingleTool(tool: McpToolDefinition, toolsetKey: string): void {
     // Only pass annotations if they exist and are not empty
@@ -234,8 +274,6 @@ export class DynamicToolManager {
   }
 
   /**
-   * Disables a toolset by name.
-   * Note: Due to MCP limitations, tools remain registered but the toolset is marked inactive.
    * @param toolsetName - The name of the toolset to disable
    * @returns Result object with success status and message
    */
@@ -286,8 +324,6 @@ export class DynamicToolManager {
   }
 
   /**
-   * Enables multiple toolsets in a batch operation.
-   * Sends a single notification after all toolsets are processed.
    * @param toolsetNames - Array of toolset names to enable
    * @returns Result object with overall success status and individual results
    */
@@ -340,7 +376,6 @@ export class DynamicToolManager {
   }
 
   /**
-   * Enables all available toolsets in a batch operation.
    * @returns Result object with overall success status and individual results
    */
   public async enableAllToolsets(): Promise<{

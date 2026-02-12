@@ -2,61 +2,33 @@
 
 ## Purpose
 
-Defines all TypeScript interfaces, types, and contracts for the Toolception system. This is the foundation layer with no internal dependencies.
+Defines all TypeScript interfaces, types, and contracts. Foundation layer with no internal dependencies.
 
-## Key Components
+## Key Types
 
-**McpToolDefinition** - Individual tool structure with name, description, inputSchema, handler, and optional annotations.
+- **McpToolDefinition** — Individual tool: name, description, inputSchema, handler, optional annotations
+- **ToolSetDefinition** — Groups tools with optional module references and decision criteria for LLMs
+- **ToolSetCatalog** — `Record<string, ToolSetDefinition>` mapping toolset keys to definitions
+- **ExposurePolicy** — Controls toolset access: allowlist/denylist, max active count, namespacing
+- **PermissionConfig** — Per-client access control with header or config source
+- **SessionContextConfig** — Per-session context extraction from query params
+- **ToolingErrorCode** — Error classification: `E_VALIDATION`, `E_POLICY_MAX_ACTIVE`, `E_TOOL_NAME_CONFLICT`, `E_NOTIFY_FAILED`, `E_INTERNAL`
+- **ModuleLoader** — `(context?) => Promise<McpToolDefinition[]> | McpToolDefinition[]`
 
-**ToolSetDefinition** - Groups tools into named sets with optional module references and decision criteria.
-
-**ToolSetCatalog** - `Record<string, ToolSetDefinition>` mapping toolset keys to definitions.
-
-**ExposurePolicy** - Controls toolset access:
-- `maxActiveToolsets`: Concurrent limit
-- `allowlist` / `denylist`: Toolset filtering
-- `namespaceToolsWithSetKey`: Prefix tools with toolset name
-- `onLimitExceeded`: Callback when limit hit
-
-**PermissionConfig** - Per-client access control:
-- `source: "headers" | "config"` - Permission data source
-- `headerName`: Custom header (default: `mcp-toolset-permissions`)
-- `staticMap`: clientId → toolsets mapping
-- `resolver`: Dynamic permission function
-- `defaultPermissions`: Fallback array
-
-**SessionContextConfig** - Per-session context extraction:
-- `queryParam`: name, encoding (base64/json), allowedKeys
-- `contextResolver`: Custom context builder
-- `merge`: "shallow" | "deep"
-
-**ToolingErrorCode** - Error classification enum:
-- `E_VALIDATION`, `E_POLICY_MAX_ACTIVE`, `E_TOOL_NAME_CONFLICT`, `E_NOTIFY_FAILED`, `E_INTERNAL`
-
-**ModuleLoader** - `(context?) => Promise<McpToolDefinition[]> | McpToolDefinition[]`
+Also: `src/errors/ToolingError.ts` (18 LOC) — thin error class wrapping ToolingErrorCode. No separate Intent Node needed.
 
 ## Invariants
 
-1. **Annotations must be non-empty objects or omitted** - Empty `{}` annotations cause issues; omit entirely if unused
-2. **ToolingErrorCode values are exhaustive** - All error codes are defined here; do not add codes elsewhere
-3. **PermissionConfig requires source field** - Must specify "headers" or "config"
-4. **SessionContextConfig.allowedKeys is security-critical** - Always whitelist allowed keys
+1. **Annotations must be non-empty objects or omitted** — Empty `{}` annotations cause SDK issues; omit entirely if unused
+2. **ToolingErrorCode values are exhaustive** — All error codes defined here; do not add codes elsewhere
+3. **PermissionConfig requires source field** — Must specify `"headers"` or `"config"`
+4. **SessionContextConfig.allowedKeys is security-critical** — Always whitelist allowed keys; omitting allows arbitrary config injection
 
 ## Anti-patterns
 
 - Adding tool validation logic here (belongs in ToolRegistry)
-- Importing from other src/ modules (types is leaf-level)
+- Importing from other `src/` modules (types is leaf-level)
 - Making types mutable (all should be readonly where possible)
 
-## Dependencies
-
-- Imports: None (leaf module)
-- Used by: All other modules
-
-## See Also
-
-- `src/errors/ToolingError.ts` - Error class using ToolingErrorCode (18 LOC)
-- `src/core/AGENTS.md` - How types are used in orchestration
-
 ---
-*Keep this Intent Node updated when modifying types. See root CLAUDE.md for maintenance guidelines.*
+*Keep this Intent Node updated when modifying types. See root AGENTS.md for maintenance guidelines.*

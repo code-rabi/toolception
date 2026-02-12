@@ -5,6 +5,7 @@ import Fastify, {
 } from "fastify";
 import cors from "@fastify/cors";
 import { randomUUID } from "node:crypto";
+import { z } from "zod";
 import type { DynamicToolManager } from "../core/DynamicToolManager.js";
 import { ClientResourceCache } from "../session/ClientResourceCache.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -14,33 +15,16 @@ import type { ServerOrchestrator } from "../core/ServerOrchestrator.js";
 import type {
   ClientRequestContext,
   PermissionAwareBundle,
-} from "./createPermissionAwareBundle.js";
-import type { CustomEndpointDefinition } from "../http/customEndpoints.js";
-import { registerCustomEndpoints } from "../http/endpointRegistration.js";
+  PermissionAwareFastifyTransportOptions,
+} from "./permissions.types.js";
+import type { CustomEndpointDefinition } from "../http/http.types.js";
+import { registerCustomEndpoints } from "../http/http.utils.js";
 
-export interface PermissionAwareFastifyTransportOptions {
-  host?: string;
-  port?: number;
-  basePath?: string;
-  cors?: boolean;
-  logger?: boolean;
-  app?: FastifyInstance;
-  /**
-   * Optional custom HTTP endpoints to register alongside MCP protocol endpoints.
-   * Allows adding REST-like endpoints with Zod validation and type inference.
-   * Handlers receive permission context (allowedToolsets, failedToolsets).
-   */
-  customEndpoints?: CustomEndpointDefinition[];
-}
+const mcpClientIdSchema = z
+  .string({ message: "Missing required mcp-client-id header" })
+  .trim()
+  .min(1, "mcp-client-id header must not be empty");
 
-/**
- * Enhanced Fastify transport that supports permission-based toolset access.
- * Integrates with PermissionResolver to enforce per-client toolset permissions.
- * 
- * This transport extracts client context from requests and passes it to the
- * permission-aware bundle creator, ensuring each client receives only their
- * authorized toolsets while maintaining session management and caching.
- */
 export class PermissionAwareFastifyTransport {
   private readonly options: {
     host: string;
@@ -72,13 +56,6 @@ export class PermissionAwareFastifyTransport {
     },
   });
 
-  /**
-   * Creates a new PermissionAwareFastifyTransport instance.
-   * @param defaultManager - Default tool manager for status endpoints
-   * @param createPermissionAwareBundle - Function to create permission-aware bundles
-   * @param options - Transport configuration options
-   * @param configSchema - Optional JSON schema for configuration discovery
-   */
   constructor(
     defaultManager: DynamicToolManager,
     createPermissionAwareBundle: (
@@ -101,10 +78,27 @@ export class PermissionAwareFastifyTransport {
     this.configSchema = configSchema;
   }
 
-  /**
-   * Starts the Fastify server and registers all MCP endpoints.
-   * Sets up routes for health checks, tool status, and MCP protocol handling.
-   */
+  static builder() {
+    let _defaultManager: DynamicToolManager;
+    let _createPermissionAwareBundle: (context: ClientRequestContext) => Promise<PermissionAwareBundle>;
+    const opts: PermissionAwareFastifyTransportOptions = {};
+    let _configSchema: object | undefined;
+    const builder = {
+      defaultManager(value: DynamicToolManager) { _defaultManager = value; return builder; },
+      createPermissionAwareBundle(value: (context: ClientRequestContext) => Promise<PermissionAwareBundle>) { _createPermissionAwareBundle = value; return builder; },
+      host(value: string) { opts.host = value; return builder; },
+      port(value: number) { opts.port = value; return builder; },
+      basePath(value: string) { opts.basePath = value; return builder; },
+      cors(value: boolean) { opts.cors = value; return builder; },
+      logger(value: boolean) { opts.logger = value; return builder; },
+      app(value: FastifyInstance) { opts.app = value; return builder; },
+      customEndpoints(value: CustomEndpointDefinition[]) { opts.customEndpoints = value; return builder; },
+      configSchema(value: object) { _configSchema = value; return builder; },
+      build() { return new PermissionAwareFastifyTransport(_defaultManager, _createPermissionAwareBundle, opts, _configSchema); },
+    };
+    return builder;
+  }
+
   public async start(): Promise<void> {
     if (this.app) return;
     const app = this.options.app ?? Fastify({ logger: this.options.logger });
@@ -157,10 +151,6 @@ export class PermissionAwareFastifyTransport {
     this.app = app;
   }
 
-  /**
-   * Stops the Fastify server and cleans up all resources.
-   * Closes all client sessions and clears the cache.
-   */
   public async stop(): Promise<void> {
     if (!this.app) return;
 
@@ -174,10 +164,7 @@ export class PermissionAwareFastifyTransport {
   }
 
   /**
-   * Cleans up resources associated with a client bundle.
-   * Closes all sessions within the bundle.
    * @param bundle - The client bundle to clean up
-   * @private
    */
   #cleanupBundle(bundle: {
     server: McpServer;
@@ -201,40 +188,32 @@ export class PermissionAwareFastifyTransport {
   }
 
   /**
-   * Normalizes the base path by removing trailing slashes.
    * @param basePath - The base path to normalize
    * @returns Normalized base path without trailing slash
-   * @private
    */
   #normalizeBasePath(basePath: string): string {
     return basePath.endsWith("/") ? basePath.slice(0, -1) : basePath;
   }
 
   /**
-   * Registers the health check endpoint.
    * @param app - Fastify instance
    * @param base - Base path for routes
-   * @private
    */
   #registerHealthEndpoint(app: FastifyInstance, base: string): void {
     app.get(`${base}/healthz`, async () => ({ ok: true }));
   }
 
   /**
-   * Registers the tools status endpoint.
    * @param app - Fastify instance
    * @param base - Base path for routes
-   * @private
    */
   #registerToolsEndpoint(app: FastifyInstance, base: string): void {
     app.get(`${base}/tools`, async () => this.defaultManager.getStatus());
   }
 
   /**
-   * Registers the MCP configuration discovery endpoint.
    * @param app - Fastify instance
    * @param base - Base path for routes
-   * @private
    */
   #registerConfigDiscoveryEndpoint(app: FastifyInstance, base: string): void {
     app.get(`${base}/.well-known/mcp-config`, async (_req, reply) => {
@@ -254,24 +233,31 @@ export class PermissionAwareFastifyTransport {
   }
 
   /**
-   * Registers the POST /mcp endpoint for JSON-RPC requests.
-   * Extracts client context, resolves permissions, and handles MCP protocol.
    * @param app - Fastify instance
    * @param base - Base path for routes
-   * @private
    */
   #registerMcpPostEndpoint(app: FastifyInstance, base: string): void {
     app.post(
       `${base}/mcp`,
       async (req: FastifyRequest, reply: FastifyReply) => {
+        // Validate mcp-client-id header
+        const parseResult = mcpClientIdSchema.safeParse(
+          req.headers["mcp-client-id"]
+        );
+        if (!parseResult.success) {
+          reply.code(400);
+          return {
+            jsonrpc: "2.0",
+            error: { code: -32600, message: parseResult.error.issues[0].message },
+            id: null,
+          };
+        }
+
         // Extract client context from request
         const context = this.#extractClientContext(req);
 
-        // Determine if we should cache this client's bundle
-        const useCache = !context.clientId.startsWith("anon-");
-
         // Get or create permission-aware bundle for this client
-        let bundle = useCache ? this.clientCache.get(context.clientId) : null;
+        let bundle = this.clientCache.get(context.clientId);
         if (!bundle) {
           try {
             const created = await this.createPermissionAwareBundle(context);
@@ -294,7 +280,7 @@ export class PermissionAwareFastifyTransport {
               sessions:
                 providedSessions instanceof Map ? providedSessions : new Map(),
             };
-            if (useCache) this.clientCache.set(context.clientId, bundle);
+            this.clientCache.set(context.clientId, bundle);
           } catch (error) {
             // Handle permission resolution or bundle creation failures
             console.error(
@@ -354,10 +340,8 @@ export class PermissionAwareFastifyTransport {
   }
 
   /**
-   * Registers the GET /mcp endpoint for SSE notifications.
    * @param app - Fastify instance
    * @param base - Base path for routes
-   * @private
    */
   #registerMcpGetEndpoint(app: FastifyInstance, base: string): void {
     app.get(`${base}/mcp`, async (req: FastifyRequest, reply: FastifyReply) => {
@@ -391,10 +375,8 @@ export class PermissionAwareFastifyTransport {
   }
 
   /**
-   * Registers the DELETE /mcp endpoint for session termination.
    * @param app - Fastify instance
    * @param base - Base path for routes
-   * @private
    */
   #registerMcpDeleteEndpoint(app: FastifyInstance, base: string): void {
     app.delete(
@@ -445,11 +427,8 @@ export class PermissionAwareFastifyTransport {
   }
 
   /**
-   * Extracts client context from the request.
-   * Generates anonymous client ID if not provided in headers.
    * @param req - Fastify request object
    * @returns Client request context with ID and headers
-   * @private
    */
   #extractClientContext(req: FastifyRequest): ClientRequestContext {
     const clientIdHeader = (
@@ -472,12 +451,9 @@ export class PermissionAwareFastifyTransport {
   }
 
   /**
-   * Creates a safe error response that doesn't expose unauthorized toolset information.
-   * Used for permission-related errors to prevent information leakage.
    * @param message - Generic error message to return to client
-   * @param code - JSON-RPC error code (default: -32000 for server error)
+   * @param code - JSON-RPC error code
    * @returns JSON-RPC error response object
-   * @private
    */
   #createSafeErrorResponse(message: string = "Access denied", code: number = -32000) {
     return {

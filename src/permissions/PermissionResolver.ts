@@ -1,18 +1,9 @@
 import type { PermissionConfig } from "../types/index.js";
 
-/**
- * Resolves and caches client permissions based on configured permission sources.
- * Supports both header-based and config-based permission resolution with caching
- * for performance optimization.
- */
 export class PermissionResolver {
   private cache = new Map<string, string[]>();
   private readonly normalizedHeaderName: string;
 
-  /**
-   * Creates a new PermissionResolver instance.
-   * @param config - The permission configuration defining how permissions are resolved
-   */
   constructor(private config: PermissionConfig) {
     // Pre-normalize header name to lowercase for case-insensitive matching
     this.normalizedHeaderName = (
@@ -20,17 +11,22 @@ export class PermissionResolver {
     ).toLowerCase();
   }
 
+  static builder() {
+    const opts: Partial<PermissionConfig> = {};
+    const builder = {
+      source(value: "headers" | "config") { opts.source = value; return builder; },
+      headerName(value: string) { opts.headerName = value; return builder; },
+      staticMap(value: Record<string, string[]>) { opts.staticMap = value; return builder; },
+      resolver(value: (clientId: string) => string[]) { opts.resolver = value; return builder; },
+      defaultPermissions(value: string[]) { opts.defaultPermissions = value; return builder; },
+      build() { return new PermissionResolver(opts as PermissionConfig); },
+    };
+    return builder;
+  }
+
   /**
-   * Resolves permissions for a client based on the configured source.
-   * Results are cached to improve performance for subsequent requests from the same client.
-   * Handles all errors gracefully by returning empty permissions on failure.
-   * 
-   * Note on caching: For header-based permissions, permissions are cached by clientId.
-   * This means subsequent requests from the same client will use cached permissions,
-   * even if headers change. Use invalidateCache(clientId) to force re-resolution.
-   * 
    * @param clientId - The unique identifier for the client
-   * @param headers - Optional request headers (required for header-based permissions)
+   * @param headers - Optional request headers
    * @returns Array of toolset names the client is allowed to access
    */
   resolvePermissions(
@@ -78,8 +74,6 @@ export class PermissionResolver {
   }
 
   /**
-   * Invalidates cached permissions for a specific client.
-   * Call this when you know a client's permissions have changed.
    * @param clientId - The client ID to invalidate
    */
   invalidateCache(clientId: string): void {
@@ -87,13 +81,8 @@ export class PermissionResolver {
   }
 
   /**
-   * Parses permissions from request headers.
-   * Extracts comma-separated toolset names from the configured header.
-   * Handles malformed headers gracefully by returning empty permissions.
-   * Uses case-insensitive header lookup per RFC 7230.
    * @param headers - Request headers containing permission data
-   * @returns Array of toolset names from headers, or empty array if header is missing/malformed
-   * @private
+   * @returns Array of toolset names from headers
    */
   #parseHeaderPermissions(headers?: Record<string, string>): string[] {
     if (!headers) {
@@ -127,12 +116,9 @@ export class PermissionResolver {
   }
 
   /**
-   * Finds a header value using case-insensitive key matching.
-   * HTTP headers are case-insensitive per RFC 7230.
    * @param headers - The headers object to search
    * @param normalizedKey - The lowercase key to search for
-   * @returns The header value if found, undefined otherwise
-   * @private
+   * @returns The header value if found
    */
   #findHeaderCaseInsensitive(
     headers: Record<string, string>,
@@ -152,12 +138,8 @@ export class PermissionResolver {
   }
 
   /**
-   * Resolves permissions from server-side configuration.
-   * Tries resolver function first (if provided), then falls back to static map,
-   * and finally to default permissions. Handles errors gracefully.
    * @param clientId - The unique identifier for the client
    * @returns Array of toolset names from configuration
-   * @private
    */
   #resolveConfigPermissions(clientId: string): string[] {
     // Try resolver function first (if provided)
@@ -182,11 +164,8 @@ export class PermissionResolver {
   }
 
   /**
-   * Attempts to resolve permissions using the configured resolver function.
-   * Handles errors gracefully and returns null on failure to allow fallback.
    * @param clientId - The unique identifier for the client
-   * @returns Array of toolset names if successful, null if resolver fails or returns invalid data
-   * @private
+   * @returns Array of toolset names if successful, null if resolver fails
    */
   #tryResolverFunction(clientId: string): string[] | null {
     try {
@@ -209,11 +188,8 @@ export class PermissionResolver {
   }
 
   /**
-   * Looks up permissions in the static map configuration.
-   * Returns null if client is not found to allow fallback to defaults.
    * @param clientId - The unique identifier for the client
    * @returns Array of toolset names if found, null if client not in map
-   * @private
    */
   #lookupStaticMap(clientId: string): string[] | null {
     const permissions = this.config.staticMap![clientId];
@@ -223,10 +199,6 @@ export class PermissionResolver {
     return null;
   }
 
-  /**
-   * Clears the permission cache.
-   * Useful for cleanup during server shutdown or when permissions need to be refreshed.
-   */
   clearCache(): void {
     this.cache.clear();
   }

@@ -1,22 +1,6 @@
 import type { Mode, ToolSetCatalog } from "../types/index.js";
-
-interface ModeResolverKeys {
-  dynamic?: string[]; // keys that, when present/true, enable dynamic mode
-  toolsets?: string[]; // keys that carry comma-separated toolsets
-}
-
-interface ModeResolverOptions {
-  keys?: ModeResolverKeys;
-}
-
-const DEFAULT_KEYS: Required<ModeResolverKeys> = {
-  dynamic: [
-    "dynamic-tool-discovery",
-    "dynamicToolDiscovery",
-    "DYNAMIC_TOOL_DISCOVERY",
-  ],
-  toolsets: ["tool-sets", "toolSets", "FMP_TOOL_SETS"],
-};
+import type { ModeResolverKeys, ModeResolverOptions } from "./mode.types.js";
+import { DEFAULT_KEYS } from "./mode.types.js";
 
 export class ToolsetValidator {
   private readonly keys: Required<ModeResolverKeys>;
@@ -26,6 +10,15 @@ export class ToolsetValidator {
       dynamic: options.keys?.dynamic ?? DEFAULT_KEYS.dynamic,
       toolsets: options.keys?.toolsets ?? DEFAULT_KEYS.toolsets,
     };
+  }
+
+  static builder() {
+    const opts: ModeResolverOptions = {};
+    const builder = {
+      keys(value: ModeResolverKeys) { opts.keys = value; return builder; },
+      build() { return new ToolsetValidator(opts); },
+    };
+    return builder;
   }
 
   public resolveMode(
@@ -89,21 +82,11 @@ export class ToolsetValidator {
     catalog: ToolSetCatalog
   ): { isValid: boolean; sanitized?: string; error?: string } {
     if (!name || typeof name !== "string") {
-      return {
-        isValid: false,
-        error: `Invalid toolset name provided. Must be a non-empty string. Available toolsets: ${Object.keys(
-          catalog
-        ).join(", ")}`,
-      };
+      return this.createInvalidNameError(name, catalog);
     }
     const sanitized = name.trim();
     if (sanitized.length === 0) {
-      return {
-        isValid: false,
-        error: `Empty toolset name provided. Available toolsets: ${Object.keys(
-          catalog
-        ).join(", ")}`,
-      };
+      return this.createInvalidNameError(sanitized, catalog);
     }
     if (!catalog[sanitized]) {
       return {
@@ -117,8 +100,28 @@ export class ToolsetValidator {
   }
 
   /**
-   * Validates and retrieves modules for a set of toolsets.
-   * Note: A toolset with only direct tools (no modules) is valid and returns an empty modules array.
+   * @param name - The invalid name value
+   * @param catalog - The toolset catalog for listing available options
+   * @returns Validation result with descriptive error message
+   */
+  private createInvalidNameError(
+    name: unknown,
+    catalog: ToolSetCatalog
+  ): { isValid: false; error: string } {
+    const available = Object.keys(catalog).join(", ");
+    if (!name || typeof name !== "string") {
+      return {
+        isValid: false,
+        error: `Invalid toolset name provided. Must be a non-empty string. Available toolsets: ${available}`,
+      };
+    }
+    return {
+      isValid: false,
+      error: `Empty toolset name provided. Available toolsets: ${available}`,
+    };
+  }
+
+  /**
    * @param toolsetNames - Array of toolset names to validate
    * @param catalog - The toolset catalog to validate against
    * @returns Validation result with modules array if valid

@@ -5,6 +5,7 @@ import Fastify, {
 } from "fastify";
 import cors from "@fastify/cors";
 import { randomUUID } from "node:crypto";
+import { z } from "zod";
 import type { DynamicToolManager } from "../core/DynamicToolManager.js";
 import type { ServerOrchestrator } from "../core/ServerOrchestrator.js";
 import { ClientResourceCache } from "../session/ClientResourceCache.js";
@@ -13,32 +14,17 @@ import type { SessionRequestContext } from "../types/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { CustomEndpointDefinition } from "./customEndpoints.js";
-import { registerCustomEndpoints } from "./endpointRegistration.js";
+import type {
+  FastifyTransportOptions,
+  CreateBundleCallback,
+  CustomEndpointDefinition,
+} from "./http.types.js";
+import { registerCustomEndpoints } from "./http.utils.js";
 
-export interface FastifyTransportOptions {
-  host?: string;
-  port?: number;
-  basePath?: string; // e.g. "/" or "/api"
-  cors?: boolean;
-  logger?: boolean;
-  // Optional DI: provide a Fastify instance (e.g., for tests). If provided, start() will not listen.
-  app?: FastifyInstance;
-  /**
-   * Optional custom HTTP endpoints to register alongside MCP protocol endpoints.
-   * Allows adding REST-like endpoints with Zod validation and type inference.
-   */
-  customEndpoints?: CustomEndpointDefinition[];
-}
-
-/**
- * Callback type for creating a server bundle.
- * Accepts an optional merged context for per-session context support.
- */
-export type CreateBundleCallback = (mergedContext?: unknown) => {
-  server: McpServer;
-  orchestrator: ServerOrchestrator;
-};
+const mcpClientIdSchema = z
+  .string({ message: "Missing required mcp-client-id header" })
+  .trim()
+  .min(1, "mcp-client-id header must not be empty");
 
 export class FastifyTransport {
   private readonly options: {
@@ -93,6 +79,31 @@ export class FastifyTransport {
     this.configSchema = configSchema;
   }
 
+  static builder() {
+    let _defaultManager: DynamicToolManager;
+    let _createBundle: CreateBundleCallback;
+    const opts: FastifyTransportOptions = {};
+    let _configSchema: object | undefined;
+    let _sessionContextResolver: SessionContextResolver | undefined;
+    let _baseContext: unknown;
+    const builder = {
+      defaultManager(value: DynamicToolManager) { _defaultManager = value; return builder; },
+      createBundle(value: CreateBundleCallback) { _createBundle = value; return builder; },
+      host(value: string) { opts.host = value; return builder; },
+      port(value: number) { opts.port = value; return builder; },
+      basePath(value: string) { opts.basePath = value; return builder; },
+      cors(value: boolean) { opts.cors = value; return builder; },
+      logger(value: boolean) { opts.logger = value; return builder; },
+      app(value: FastifyInstance) { opts.app = value; return builder; },
+      customEndpoints(value: CustomEndpointDefinition[]) { opts.customEndpoints = value; return builder; },
+      configSchema(value: object) { _configSchema = value; return builder; },
+      sessionContextResolver(value: SessionContextResolver) { _sessionContextResolver = value; return builder; },
+      baseContext(value: unknown) { _baseContext = value; return builder; },
+      build() { return new FastifyTransport(_defaultManager, _createBundle, opts, _configSchema, _sessionContextResolver, _baseContext); },
+    };
+    return builder;
+  }
+
   public async start(): Promise<void> {
     if (this.app) return;
     const app = this.options.app ?? Fastify({ logger: this.options.logger });
@@ -100,15 +111,56 @@ export class FastifyTransport {
       await app.register(cors, { origin: true });
     }
 
-    const base = this.options.basePath.endsWith("/")
-      ? this.options.basePath.slice(0, -1)
-      : this.options.basePath;
+    const base = this.normalizeBasePath(this.options.basePath);
 
+    this.registerHealthEndpoint(app, base);
+    this.registerToolsEndpoint(app, base);
+    this.registerConfigDiscoveryEndpoint(app, base);
+    this.registerMcpPostEndpoint(app, base);
+    this.registerMcpGetEndpoint(app, base);
+    this.registerMcpDeleteEndpoint(app, base);
+
+    // Register custom endpoints if provided
+    if (this.options.customEndpoints && this.options.customEndpoints.length > 0) {
+      registerCustomEndpoints(app, base, this.options.customEndpoints);
+    }
+
+    // Only listen if we created the app
+    if (!this.options.app) {
+      await app.listen({ host: this.options.host, port: this.options.port });
+    }
+    this.app = app;
+  }
+
+  /**
+   * @param basePath - The base path to normalize
+   * @returns Normalized base path without trailing slash
+   */
+  private normalizeBasePath(basePath: string): string {
+    return basePath.endsWith("/") ? basePath.slice(0, -1) : basePath;
+  }
+
+  /**
+   * @param app - Fastify instance
+   * @param base - Base path for routes
+   */
+  private registerHealthEndpoint(app: FastifyInstance, base: string): void {
     app.get(`${base}/healthz`, async () => ({ ok: true }));
+  }
 
+  /**
+   * @param app - Fastify instance
+   * @param base - Base path for routes
+   */
+  private registerToolsEndpoint(app: FastifyInstance, base: string): void {
     app.get(`${base}/tools`, async () => this.defaultManager.getStatus());
+  }
 
-    // Config discovery (placeholder schema)
+  /**
+   * @param app - Fastify instance
+   * @param base - Base path for routes
+   */
+  private registerConfigDiscoveryEndpoint(app: FastifyInstance, base: string): void {
     app.get(`${base}/.well-known/mcp-config`, async (_req, reply) => {
       reply.header("Content-Type", "application/schema+json; charset=utf-8");
       const baseSchema = this.configSchema ?? {
@@ -123,21 +175,28 @@ export class FastifyTransport {
       };
       return baseSchema;
     });
+  }
 
-    // POST /mcp - JSON-RPC
+  /**
+   * @param app - Fastify instance
+   * @param base - Base path for routes
+   */
+  private registerMcpPostEndpoint(app: FastifyInstance, base: string): void {
     app.post(
       `${base}/mcp`,
       async (req: FastifyRequest, reply: FastifyReply) => {
-        const clientIdHeader = (
-          req.headers["mcp-client-id"] as string | undefined
-        )?.trim();
-        const clientId =
-          clientIdHeader && clientIdHeader.length > 0
-            ? clientIdHeader
-            : `anon-${randomUUID()}`;
-
-        // When anon id, avoid caching (one-off)
-        const useCache = !clientId.startsWith("anon-");
+        const parseResult = mcpClientIdSchema.safeParse(
+          req.headers["mcp-client-id"]
+        );
+        if (!parseResult.success) {
+          reply.code(400);
+          return {
+            jsonrpc: "2.0",
+            error: { code: -32600, message: parseResult.error.issues[0].message },
+            id: null,
+          };
+        }
+        const clientId = parseResult.data;
 
         // Build session request context and resolve merged context
         const { cacheKey, mergedContext } = this.resolveSessionContext(
@@ -145,7 +204,7 @@ export class FastifyTransport {
           clientId
         );
 
-        let bundle = useCache ? this.clientCache.get(cacheKey) : null;
+        let bundle = this.clientCache.get(cacheKey);
         if (!bundle) {
           const created = this.createBundle(mergedContext);
           bundle = {
@@ -153,7 +212,7 @@ export class FastifyTransport {
             orchestrator: created.orchestrator,
             sessions: new Map(),
           };
-          if (useCache) this.clientCache.set(cacheKey, bundle);
+          this.clientCache.set(cacheKey, bundle);
         }
 
         const sessionId = req.headers["mcp-session-id"] as string | undefined;
@@ -202,8 +261,13 @@ export class FastifyTransport {
         return reply;
       }
     );
+  }
 
-    // GET /mcp - SSE notifications
+  /**
+   * @param app - Fastify instance
+   * @param base - Base path for routes
+   */
+  private registerMcpGetEndpoint(app: FastifyInstance, base: string): void {
     app.get(`${base}/mcp`, async (req: FastifyRequest, reply: FastifyReply) => {
       const clientIdHeader = (
         req.headers["mcp-client-id"] as string | undefined
@@ -214,7 +278,8 @@ export class FastifyTransport {
         reply.code(400);
         return "Missing mcp-client-id";
       }
-      const bundle = this.clientCache.get(clientId);
+      const { cacheKey } = this.resolveSessionContext(req, clientId);
+      const bundle = this.clientCache.get(cacheKey);
       if (!bundle) {
         reply.code(400);
         return "Invalid or expired client";
@@ -232,8 +297,13 @@ export class FastifyTransport {
       await transport.handleRequest((req as any).raw, (reply as any).raw);
       return reply;
     });
+  }
 
-    // DELETE /mcp - terminate session
+  /**
+   * @param app - Fastify instance
+   * @param base - Base path for routes
+   */
+  private registerMcpDeleteEndpoint(app: FastifyInstance, base: string): void {
     app.delete(
       `${base}/mcp`,
       async (req: FastifyRequest, reply: FastifyReply) => {
@@ -254,7 +324,8 @@ export class FastifyTransport {
             id: null,
           };
         }
-        const bundle = this.clientCache.get(clientId);
+        const { cacheKey } = this.resolveSessionContext(req, clientId);
+        const bundle = this.clientCache.get(cacheKey);
         const transport = bundle?.sessions.get(sessionId);
         if (!bundle || !transport) {
           reply.code(404);
@@ -279,24 +350,8 @@ export class FastifyTransport {
         return reply;
       }
     );
-
-    // Register custom endpoints if provided
-    // IMPORTANT: Only register if customEndpoints is provided AND has items
-    if (this.options.customEndpoints && this.options.customEndpoints.length > 0) {
-      registerCustomEndpoints(app, base, this.options.customEndpoints);
-    }
-
-    // Only listen if we created the app
-    if (!this.options.app) {
-      await app.listen({ host: this.options.host, port: this.options.port });
-    }
-    this.app = app;
   }
 
-  /**
-   * Stops the Fastify server and cleans up all resources.
-   * Closes all client sessions and clears the cache.
-   */
   public async stop(): Promise<void> {
     if (!this.app) return;
 
@@ -310,10 +365,7 @@ export class FastifyTransport {
   }
 
   /**
-   * Cleans up resources associated with a client bundle.
-   * Closes all sessions within the bundle.
    * @param bundle - The client bundle to clean up
-   * @private
    */
   private cleanupBundle(bundle: {
     server: McpServer;
@@ -335,14 +387,9 @@ export class FastifyTransport {
   }
 
   /**
-   * Resolves the session context and generates a cache key for the request.
-   * If a session context resolver is configured, it extracts query parameters
-   * and merges session-specific context with the base context.
-   *
    * @param req - The Fastify request
    * @param clientId - The client identifier
    * @returns Object with cache key and merged context
-   * @private
    */
   private resolveSessionContext(
     req: FastifyRequest,
@@ -382,12 +429,8 @@ export class FastifyTransport {
   }
 
   /**
-   * Extracts headers from a Fastify request as a Record.
-   * Normalizes header names to lowercase.
-   *
    * @param req - The Fastify request
    * @returns Headers as a string record
-   * @private
    */
   private extractHeaders(req: FastifyRequest): Record<string, string> {
     const headers: Record<string, string> = {};
@@ -402,11 +445,8 @@ export class FastifyTransport {
   }
 
   /**
-   * Extracts query parameters from a Fastify request as a Record.
-   *
    * @param req - The Fastify request
    * @returns Query parameters as a string record
-   * @private
    */
   private extractQuery(req: FastifyRequest): Record<string, string> {
     const query: Record<string, string> = {};
