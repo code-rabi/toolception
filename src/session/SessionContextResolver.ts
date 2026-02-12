@@ -71,8 +71,13 @@ export class SessionContextResolver {
     baseContext: unknown,
     parsedConfig: Record<string, unknown>
   ): SessionContextResult {
+    const resolver = this.config.contextResolver;
+    if (!resolver) {
+      return { context: baseContext, cacheKeySuffix: "default" };
+    }
+
     try {
-      const resolvedContext = this.config.contextResolver!(
+      const resolvedContext = resolver(
         request,
         baseContext,
         parsedConfig

@@ -1,9 +1,9 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ExposurePolicy } from "../types/index.js";
 import type {
   CreatePermissionBasedMcpServerOptions,
-  ExposurePolicy,
-} from "../types/index.js";
-import type { McpServerHandle } from "./server.types.js";
+  McpServerHandle,
+} from "./server.types.js";
 import {
   validatePermissionConfig,
   createPermissionAwareBundle,
@@ -189,6 +189,9 @@ function buildPermissionTransport(
   }
   if (options.http?.customEndpoints) {
     builder.customEndpoints(options.http.customEndpoints);
+  }
+  if (options.configSchema) {
+    builder.configSchema(options.configSchema);
   }
 
   return builder.build();

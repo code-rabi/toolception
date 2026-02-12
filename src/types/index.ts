@@ -1,5 +1,3 @@
-import type { CreateMcpServerOptions } from "../server/server.types.js";
-
 // Loader concepts are internal-only; no public types for loaders
 
 export type McpToolDefinition = {
@@ -385,30 +383,3 @@ export interface SessionRequestContext {
   query: Record<string, string>;
 }
 
-export type CreatePermissionBasedMcpServerOptions = Omit<
-  CreateMcpServerOptions,
-  "startup"
-> & {
-  /**
-   * Permission configuration defining how client access control is enforced.
-   * 
-   * This field is required for permission-based servers. It determines whether
-   * permissions are read from request headers or resolved server-side using
-   * static maps or resolver functions.
-   * 
-   * @see {@link PermissionConfig} for detailed configuration options and examples
-   */
-  permissions: PermissionConfig;
-
-  /**
-   * Startup configuration is not allowed for permission-based servers.
-   * 
-   * Permission-based servers automatically determine which toolsets to load for
-   * each client based on the `permissions` configuration. The server internally
-   * uses STATIC mode per client to ensure isolation and prevent dynamic toolset
-   * changes during a session.
-   * 
-   * @deprecated Do not use - permission-based servers determine toolsets from client permissions
-   */
-  startup?: never;
-};
