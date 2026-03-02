@@ -27,20 +27,16 @@ Provides Fastify-based HTTP transport for the MCP protocol. Handles SSE streams,
 3. **Cache key uses `resolveSessionContext()`** — All three `/mcp` handlers (POST, GET, DELETE) must derive the cache key through the same `resolveSessionContext()` path. Using plain `clientId` causes cache misses when session context is active.
 4. **Reserved paths cannot be overridden** — `/mcp`, `/healthz`, `/tools`, `/.well-known/mcp-config` are registered before custom endpoints.
 
-## SDK Boundary Workarounds
-
-These `as any` casts exist because of MCP SDK / Fastify type mismatches:
-
-- **Fastify raw req/res passthrough** — `transport.handleRequest((req as any).raw, (reply as any).raw, body)`. The SDK expects Node `http.IncomingMessage`/`http.ServerResponse` but Fastify wraps these objects.
-- **`StreamableHTTPServerTransport.close()`** — The DELETE handler calls `(transport as any).close()` because `.close()` exists at runtime but is not in the SDK's TypeScript types.
-
 ## Session Lifecycle
 
 ```
 1. POST /mcp (initialize)
    → isInitializeRequest(body) detects first contact
-   → Create StreamableHTTPServerTransport
-   → Generate session ID, store in bundle.sessions
+   → drainExistingSessions() — closes sessions in this bundle's map (same-client reconnect)
+   → disconnectServer()      — closes server's current transport (STATIC cross-client case)
+   → Set transport.onclose BEFORE server.connect() (SDK 1.26+ chain requirement)
+   → server.connect(transport) — throws "Already connected" if above steps missed
+   → Generate session ID, store in bundle.sessions via onsessioninitialized
 
 2. GET /mcp (streaming)
    → Require mcp-session-id header
@@ -54,6 +50,15 @@ These `as any` casts exist because of MCP SDK / Fastify type mismatches:
    → Close transport (best-effort)
    → Remove session from bundle
 ```
+
+## SDK 1.26+ Reconnection Protocol
+
+`Protocol.connect()` throws `"Already connected"` if `this._transport` is still set. Two private methods handle the pre-connect cleanup:
+
+- **`drainExistingSessions(sessions)`** — covers same-bundle reconnects where sessions are still in the map (e.g. client aborted without DELETE but same `clientId`)
+- **`disconnectServer(server)`** — covers cross-bundle cases in STATIC mode where different clients share one `McpServer`; `StreamableHTTPClientTransport.close()` does NOT send DELETE (it only aborts connections), so `_transport` can remain set after the first client leaves
+
+**Critical ordering**: `transport.onclose` must be assigned BEFORE `server.connect(transport)`. `Protocol.connect()` reads the existing `onclose` and wraps it in a chain that also calls `Protocol._onclose()` (which clears `_transport`). If set after `connect()`, the chain is broken and `_transport` is never cleared on disconnect.
 
 ## Anti-patterns
 

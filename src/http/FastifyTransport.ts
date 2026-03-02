@@ -220,7 +220,9 @@ export class FastifyTransport {
         let transport: StreamableHTTPServerTransport | undefined;
         if (sessionId && bundle.sessions.get(sessionId)) {
           transport = bundle.sessions.get(sessionId)!;
-        } else if (!sessionId && isInitializeRequest((req as any).body)) {
+        } else if (!sessionId && isInitializeRequest(req.body)) {
+          await this.drainExistingSessions(bundle.sessions);
+          await this.disconnectServer(bundle.server);
           const newSessionId = randomUUID();
           transport = new StreamableHTTPServerTransport({
             sessionIdGenerator: () => newSessionId,
@@ -228,6 +230,13 @@ export class FastifyTransport {
               bundle!.sessions.set(sid, transport!);
             },
           });
+          // Set onclose BEFORE connect() so Protocol.connect() captures it in its
+          // chain. SDK 1.26+ wraps the existing onclose alongside _onclose(), so
+          // _transport is cleared on disconnect only if this ordering is preserved.
+          transport.onclose = () => {
+            if (transport?.sessionId)
+              bundle!.sessions.delete(transport.sessionId);
+          };
           try {
             await bundle.server.connect(transport);
           } catch (error) {
@@ -238,10 +247,6 @@ export class FastifyTransport {
               id: null,
             };
           }
-          transport.onclose = () => {
-            if (transport?.sessionId)
-              bundle!.sessions.delete(transport.sessionId);
-          };
         } else {
           reply.code(400);
           return {
@@ -251,12 +256,8 @@ export class FastifyTransport {
           };
         }
 
-        // Delegate handling to SDK transport using raw Node req/res
-        await transport.handleRequest(
-          (req as any).raw,
-          (reply as any).raw,
-          (req as any).body
-        );
+        // Delegate handling to SDK transport
+        await transport.handleRequest(req.raw, reply.raw, req.body);
         // Fastify will consider the response already sent by transport
         return reply;
       }
@@ -294,7 +295,7 @@ export class FastifyTransport {
         reply.code(400);
         return "Invalid or expired session ID";
       }
-      await transport.handleRequest((req as any).raw, (reply as any).raw);
+      await transport.handleRequest(req.raw, reply.raw);
       return reply;
     });
   }
@@ -336,13 +337,9 @@ export class FastifyTransport {
           };
         }
         try {
-          // Best-effort close and evict
-          if (typeof (transport as any).close === "function") {
-            try {
-              await (transport as any).close();
-            } catch {}
-          }
-        } finally {
+          await transport.close();
+        } catch {}
+        finally {
           if (transport?.sessionId) bundle.sessions.delete(transport.sessionId);
           else bundle.sessions.delete(sessionId);
         }
@@ -365,6 +362,44 @@ export class FastifyTransport {
   }
 
   /**
+   * Closes all active sessions and clears the session map so the server is
+   * free to accept a new connection. Required for SDK 1.26+, which throws
+   * "Already connected" when `connect()` is called while a transport is
+   * still attached. Handles unclean client disconnects followed by re-init.
+   *
+   * The map is cleared before closing so that `onclose` handlers fired by
+   * `transport.close()` do not attempt double-deletion.
+   *
+   * @param sessions - The client's active session map to drain
+   */
+  private async drainExistingSessions(
+    sessions: Map<string, StreamableHTTPServerTransport>
+  ): Promise<void> {
+    if (sessions.size === 0) return;
+    const existing = Array.from(sessions.values());
+    sessions.clear();
+    for (const transport of existing) {
+      try { await transport.close(); } catch {}
+    }
+  }
+
+  /**
+   * Disconnects the server from its current transport so that `Protocol._transport`
+   * is cleared before a new connection is established.
+   *
+   * `drainExistingSessions` handles same-bundle reconnects (sessions in the map).
+   * This method handles the STATIC-mode cross-client case: a different client's
+   * bundle has an empty sessions map, but the shared server is still attached to
+   * the previous client's transport because `StreamableHTTPClientTransport.close()`
+   * does not send DELETE—it only aborts connections.
+   *
+   * @param server - The MCP server to disconnect from its current transport
+   */
+  private async disconnectServer(server: McpServer): Promise<void> {
+    try { await server.close(); } catch {}
+  }
+
+  /**
    * @param bundle - The client bundle to clean up
    */
   private cleanupBundle(bundle: {
@@ -373,15 +408,9 @@ export class FastifyTransport {
     sessions: Map<string, StreamableHTTPServerTransport>;
   }): void {
     for (const [sessionId, transport] of bundle.sessions.entries()) {
-      try {
-        if (typeof (transport as any).close === "function") {
-          (transport as any).close().catch((err: unknown) => {
-            console.warn(`Error closing session ${sessionId}:`, err);
-          });
-        }
-      } catch (err) {
+      transport.close().catch((err: unknown) => {
         console.warn(`Error closing session ${sessionId}:`, err);
-      }
+      });
     }
     bundle.sessions.clear();
   }
