@@ -1,6 +1,6 @@
 {
   "name": "toolception",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "private": false,
   "type": "module",
   "main": "dist/index.js",
@@ -24,7 +24,7 @@
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",
-    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "fastify": "^5.0.0",
     "zod": "^3.22.4"
   },
