@@ -25,7 +25,7 @@ describe("Custom Endpoints Integration", () => {
               {
                 name: "ping",
                 description: "Test tool",
-                inputSchema: { type: "object", properties: {} },
+                inputSchema: {},
                 handler: async () => ({
                   content: [{ type: "text", text: "pong" }],
                 }),
@@ -285,7 +285,7 @@ describe("Custom Endpoints Integration", () => {
               {
                 name: "admin-ping",
                 description: "Admin test tool",
-                inputSchema: { type: "object", properties: {} },
+                inputSchema: {},
                 handler: async () => ({
                   content: [{ type: "text", text: "admin-pong" }],
                 }),
@@ -299,7 +299,7 @@ describe("Custom Endpoints Integration", () => {
               {
                 name: "user-ping",
                 description: "User test tool",
-                inputSchema: { type: "object", properties: {} },
+                inputSchema: {},
                 handler: async () => ({
                   content: [{ type: "text", text: "user-pong" }],
                 }),

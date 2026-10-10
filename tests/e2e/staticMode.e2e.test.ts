@@ -8,6 +8,8 @@ import {
   testCatalog,
   extractToolNames,
   extractTextContent,
+  sessionContextCatalog,
+  sessionContextModuleLoaders,
 } from "./helpers.js";
 
 describe("STATIC mode E2E", () => {
@@ -129,6 +131,115 @@ describe("STATIC mode E2E", () => {
       },
       10000
     );
+  });
+
+  describe("with concurrent clients", () => {
+    let server: Awaited<ReturnType<typeof createMcpServer>>;
+    let port: number;
+
+    beforeAll(async () => {
+      port = await getAvailablePort();
+      server = await createMcpServer({
+        createServer: () =>
+          new McpServer({
+            name: "test-static-concurrent",
+            version: "1.0.0",
+          }),
+        catalog: testCatalog,
+        startup: { mode: "STATIC", toolsets: ["core"] },
+        http: { port },
+      });
+      await server.start();
+    });
+
+    afterAll(async () => {
+      await server.close();
+    });
+
+    it("keeps the first client connected when a second client connects", async () => {
+      const connect = async (clientId: string) => {
+        const transport = new StreamableHTTPClientTransport(
+          new URL(`http://localhost:${port}/mcp`),
+          { requestInit: { headers: { "mcp-client-id": clientId } } }
+        );
+        const client = new Client({ name: "test", version: "1.0.0" });
+        await client.connect(transport);
+        return client;
+      };
+
+      const client1 = await connect("concurrent-client-1");
+      const client2 = await connect("concurrent-client-2");
+
+      // Both sessions stay usable at the same time
+      const result1 = await client1.callTool({ name: "core.ping", arguments: {} } as any);
+      const result2 = await client2.callTool({ name: "core.ping", arguments: {} } as any);
+      expect(extractTextContent(result1)).toBe("pong");
+      expect(extractTextContent(result2)).toBe("pong");
+
+      await client1.close();
+      await client2.close();
+    });
+  });
+
+  describe("with session context", () => {
+    let server: Awaited<ReturnType<typeof createMcpServer>>;
+    let port: number;
+
+    beforeAll(async () => {
+      port = await getAvailablePort();
+      server = await createMcpServer({
+        createServer: () =>
+          new McpServer({
+            name: "test-static-session-context",
+            version: "1.0.0",
+          }),
+        catalog: sessionContextCatalog,
+        moduleLoaders: sessionContextModuleLoaders,
+        context: { baseValue: "shared" },
+        sessionContext: {
+          enabled: true,
+          queryParam: {
+            name: "config",
+            encoding: "base64",
+            allowedKeys: ["API_TOKEN"],
+          },
+          merge: "shallow",
+        },
+        startup: { mode: "STATIC", toolsets: "ALL" },
+        http: { port },
+      });
+      await server.start();
+    });
+
+    afterAll(async () => {
+      await server.close();
+    });
+
+    it("passes per-client session context to preloaded tools", async () => {
+      const connect = async (clientId: string, token: string) => {
+        const config = Buffer.from(JSON.stringify({ API_TOKEN: token })).toString("base64");
+        const transport = new StreamableHTTPClientTransport(
+          new URL(`http://localhost:${port}/mcp?config=${config}`),
+          { requestInit: { headers: { "mcp-client-id": clientId } } }
+        );
+        const client = new Client({ name: "test", version: "1.0.0" });
+        await client.connect(transport);
+        return client;
+      };
+      const readContext = async (client: Client) => {
+        const result = await client.callTool({ name: "tenant.get_context", arguments: {} } as any);
+        return JSON.parse(extractTextContent(result));
+      };
+
+      const clientA = await connect("static-session-a", "token-a");
+      const clientB = await connect("static-session-b", "token-b");
+
+      expect(await readContext(clientA)).toEqual({ API_TOKEN: "token-a", USER_ID: null, baseValue: "shared" });
+      expect(await readContext(clientB)).toEqual({ API_TOKEN: "token-b", USER_ID: null, baseValue: "shared" });
+
+      await clientA.close();
+      await clientB.close();
+    });
   });
 
   describe("with ALL toolsets", () => {

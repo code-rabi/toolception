@@ -32,7 +32,7 @@ export const testCatalog: ToolSetCatalog = {
       {
         name: "ping",
         description: "Returns pong",
-        inputSchema: { type: "object", properties: {} },
+        inputSchema: {},
         handler: async () => ({
           content: [{ type: "text", text: "pong" }],
         }),
@@ -46,7 +46,7 @@ export const testCatalog: ToolSetCatalog = {
       {
         name: "reset",
         description: "Reset system",
-        inputSchema: { type: "object", properties: {} },
+        inputSchema: {},
         handler: async () => ({
           content: [{ type: "text", text: "reset done" }],
         }),
@@ -96,7 +96,7 @@ export const sessionContextModuleLoaders = {
     {
       name: "get_context",
       description: "Returns the current context values",
-      inputSchema: { type: "object", properties: {} },
+      inputSchema: {},
       handler: async () => ({
         content: [
           {

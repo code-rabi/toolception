@@ -33,8 +33,9 @@ Provides Fastify-based HTTP transport for the MCP protocol. Handles SSE streams,
 1. POST /mcp (initialize)
    → isInitializeRequest(body) detects first contact
    → drainExistingSessions() — closes sessions in this bundle's map (same-client reconnect)
-   → disconnectServer()      — closes server's current transport (STATIC cross-client case)
+   → disconnectServer()      — closes the bundle server's current transport (stale same-client connection)
    → Set transport.onclose BEFORE server.connect() (SDK 1.26+ chain requirement)
+   → await bundle.orchestrator.isReady() — STATIC bundles preload tools async; SDK refuses capability registration after connect
    → server.connect(transport) — throws "Already connected" if above steps missed
    → Generate session ID, store in bundle.sessions via onsessioninitialized
 
@@ -56,7 +57,7 @@ Provides Fastify-based HTTP transport for the MCP protocol. Handles SSE streams,
 `Protocol.connect()` throws `"Already connected"` if `this._transport` is still set. Two private methods handle the pre-connect cleanup:
 
 - **`drainExistingSessions(sessions)`** — covers same-bundle reconnects where sessions are still in the map (e.g. client aborted without DELETE but same `clientId`)
-- **`disconnectServer(server)`** — covers cross-bundle cases in STATIC mode where different clients share one `McpServer`; `StreamableHTTPClientTransport.close()` does NOT send DELETE (it only aborts connections), so `_transport` can remain set after the first client leaves
+- **`disconnectServer(server)`** — clears a bundle server still attached to a transport that left without DELETE; `StreamableHTTPClientTransport.close()` does NOT send DELETE (it only aborts connections), so `_transport` can remain set. Bundles never share a server, so this only ever closes the same client's stale connection
 
 **Critical ordering**: `transport.onclose` must be assigned BEFORE `server.connect(transport)`. `Protocol.connect()` reads the existing `onclose` and wraps it in a chain that also calls `Protocol._onclose()` (which clears `_transport`). If set after `connect()`, the chain is broken and `_transport` is never cleared on disconnect.
 

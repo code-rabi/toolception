@@ -19,7 +19,7 @@ describe("createPermissionBasedMcpServer", () => {
           {
             name: "tool-a",
             description: "Test tool",
-            inputSchema: { type: "object", properties: {} },
+            inputSchema: {},
             handler: async () => ({ content: [] }),
           },
         ],
@@ -400,7 +400,7 @@ describe("createPermissionBasedMcpServer", () => {
             {
               name: "module-tool",
               description: "Tool from module",
-              inputSchema: { type: "object", properties: {} },
+              inputSchema: {},
               handler: async () => ({ content: [] }),
             },
           ],

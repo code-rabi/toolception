@@ -63,11 +63,7 @@ async function runStandardServerExample() {
             name: "greet",
             description: "Greet a user",
             inputSchema: {
-              type: "object",
-              properties: {
-                name: { type: "string" },
-              },
-              required: ["name"],
+              name: z.string(),
             },
             handler: async (args: any) => ({
               content: [
@@ -426,7 +422,7 @@ async function runPermissionBasedServerExample() {
           {
             name: "admin-action",
             description: "Perform admin action",
-            inputSchema: { type: "object", properties: {} },
+            inputSchema: {},
             handler: async () => ({
               content: [{ type: "text", text: "Admin action completed" }],
             }),
@@ -440,7 +436,7 @@ async function runPermissionBasedServerExample() {
           {
             name: "user-action",
             description: "Perform user action",
-            inputSchema: { type: "object", properties: {} },
+            inputSchema: {},
             handler: async () => ({
               content: [{ type: "text", text: "User action completed" }],
             }),

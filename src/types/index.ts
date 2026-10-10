@@ -3,12 +3,17 @@
 export type McpToolDefinition = {
   name: string;
   description: string;
+  /**
+   * Zod raw shape (e.g. `{ symbol: z.string() }`) or Zod object schema, as accepted
+   * by `McpServer.registerTool`. A plain JSON Schema object is registered as an
+   * open passthrough object: clients don't see its properties and args are not validated.
+   */
   inputSchema: Record<string, any>;
   handler: (args: any) => Promise<any> | any;
   /**
    * Optional annotations providing hints about tool behavior.
    * All annotations are hints and not guaranteed.
-   * - title: Optional display title for the tool
+   * - title: Optional display title for the tool (also sent as the tool's top-level `title`)
    * - readOnlyHint: Tool does not modify its environment
    * - destructiveHint: Tool may perform destructive updates
    * - idempotentHint: Repeated calls with same arguments have no additional effect

@@ -1,4 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
+import { z } from "zod";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { DynamicToolManager } from "../src/core/DynamicToolManager.js";
 import { ModuleResolver } from "../src/mode/ModuleResolver.js";
 import { ToolRegistry } from "../src/core/ToolRegistry.js";
@@ -274,5 +278,65 @@ describe("DynamicToolManager", () => {
       readOnlyHint: false,
       idempotentHint: false,
     });
+  });
+});
+
+describe("DynamicToolManager with a real McpServer", () => {
+  async function connect(tools: any[]) {
+    const server = new McpServer({ name: "t", version: "1.0.0" });
+    const resolver = new ModuleResolver({
+      catalog: { core: { name: "Core", description: "", tools } } as any,
+    });
+    const manager = new DynamicToolManager({
+      server,
+      resolver,
+      toolRegistry: new ToolRegistry({ namespaceWithToolset: false }),
+    });
+    const result = await manager.enableToolset("core");
+    const [serverSide, clientSide] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverSide);
+    const client = new Client({ name: "c", version: "1.0.0" });
+    await client.connect(clientSide);
+    return { result, client };
+  }
+
+  it("passes validated arguments from a Zod raw shape to the handler", async () => {
+    const { result, client } = await connect([
+      {
+        name: "price",
+        description: "Price",
+        inputSchema: { symbol: z.string() },
+        annotations: { title: "Price lookup", readOnlyHint: true },
+        handler: async (args: { symbol: string }) => ({
+          content: [{ type: "text", text: args.symbol }],
+        }),
+      },
+    ]);
+    expect(result.success).toBe(true);
+
+    const { tools } = await client.listTools();
+    expect(tools[0].title).toBe("Price lookup");
+    expect(tools[0].inputSchema.properties).toHaveProperty("symbol");
+    expect(tools[0].annotations?.readOnlyHint).toBe(true);
+
+    const res = await client.callTool({ name: "price", arguments: { symbol: "AAPL" } });
+    expect((res.content as any)[0].text).toBe("AAPL");
+  });
+
+  it("registers a plain JSON Schema inputSchema as a passthrough object", async () => {
+    const { result, client } = await connect([
+      {
+        name: "price",
+        description: "Price",
+        inputSchema: { type: "object", properties: { symbol: { type: "string" } } },
+        handler: async (args: { symbol: string }) => ({
+          content: [{ type: "text", text: args.symbol }],
+        }),
+      },
+    ]);
+    expect(result.success).toBe(true);
+
+    const res = await client.callTool({ name: "price", arguments: { symbol: "MSFT" } });
+    expect((res.content as any)[0].text).toBe("MSFT");
   });
 });
