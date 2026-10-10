@@ -57,6 +57,15 @@ jobs:
           fi
           echo "version=$PKG_VERSION" >> $GITHUB_OUTPUT
 
+      - name: Extract changelog entry
+        run: |
+          VERSION="${{ steps.verify.outputs.version }}"
+          awk -v v="## [$VERSION]" '$0==v{f=1;next} /^## \[/{f=0} f' CHANGELOG.md > RELEASE_NOTES.md
+          if ! grep -q '[^[:space:]]' RELEASE_NOTES.md; then
+            echo "CHANGELOG.md has no entry for ## [$VERSION]" >&2
+            exit 1
+          fi
+
       - name: Typecheck
         run: npm run typecheck
 
@@ -77,6 +86,7 @@ jobs:
         with:
           tag_name: v${{ steps.verify.outputs.version }}
           name: v${{ steps.verify.outputs.version }}
+          body_path: RELEASE_NOTES.md
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
