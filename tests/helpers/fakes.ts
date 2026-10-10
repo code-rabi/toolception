@@ -28,6 +28,19 @@ export function createFakeMcpServer(options: { withNotifier?: boolean } = {}) {
       const handler = isLegacy ? annotationsOrHandler : maybeHandler;
       tools.push({ name, description, schema, annotations, handler });
     },
+    registerTool(
+      name: string,
+      config: { description: string; inputSchema?: any; annotations?: any },
+      handler: (args: any) => Promise<any> | any
+    ) {
+      tools.push({
+        name,
+        description: config.description,
+        schema: config.inputSchema,
+        annotations: config.annotations,
+        handler,
+      });
+    },
     async connect(_transport: unknown): Promise<void> {},
   };
   if (options.withNotifier) {
