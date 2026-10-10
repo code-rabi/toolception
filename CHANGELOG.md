@@ -4,12 +4,29 @@ All notable changes to `toolception` are listed here. Versions follow [semver](h
 
 Releases before 0.7.0 are described in [GitHub Releases](https://github.com/code-rabi/toolception/releases).
 
-## [Unreleased]
+## [0.8.0]
+
+### Breaking
+
+- A STATIC client whose startup toolsets fail to register their tools now gets a JSON-RPC error (`-32603`, HTTP 500, "Failed to load toolsets for this client.") on `initialize` instead of connecting with only some of its tools. The failed bundle is dropped, so the client's next `initialize` retries the load. ([#33](https://github.com/code-rabi/toolception/pull/33))
+  - `ServerOrchestrator.isReady()` now returns `false`, and `ensureReady()` throws, when registering a startup toolset's tools fails (for example a duplicate tool name, within a toolset or across toolsets when `namespaceToolsWithSetKey` is off). It used to report ready. `createMcpServer` therefore rejects at startup for such a catalog in STATIC mode, where it used to start with the partial toolset. `enableToolset` results (and the `enable_toolset` meta-tool output) gain an optional `code` on that failure.
+  - Toolsets refused before registration (exposure policy, duplicate names in `startup.toolsets`) and module loader errors do not count as failures.
+  - **Migration:** before upgrading, make sure no two startup toolsets register the same tool name (rename or remove the duplicate, or turn on `namespaceToolsWithSetKey`). A catalog that only worked because the collision was swallowed will now fail `initialize`, or fail at startup in STATIC mode.
 
 ### Added
 
-- `http.allowedOrigins` validates the `Origin` header on the `/mcp` endpoints, as the MCP spec requires. A request with an `Origin` outside the list gets `403`; requests without an `Origin` header are always allowed. When `cors` is on, only the listed origins get CORS access. Not set by default, so existing deployments behave as before.
+- `http.allowedOrigins` validates the `Origin` header on the `/mcp` endpoints, as the MCP spec requires. A request with an `Origin` outside the list gets `403`; requests without an `Origin` header are always allowed. When `cors` is on, only the listed origins get CORS access. Not set by default, so existing deployments behave as before. ([#32](https://github.com/code-rabi/toolception/pull/32))
   - **Migration:** none needed. To turn it on, pass `http: { allowedOrigins: ["https://app.example.com"] }`.
+
+### Changed
+
+- `disable_toolset` now removes the toolset's tools from the MCP server, so clients no longer list or call them, and the toolset can be enabled again. Before, it only changed the toolset's state and the tools stayed callable. The disable message ends with `Removed N tools.`; a partly failed enable also rolls back the tools it had registered. Clients get one `tools/list_changed` per removed tool plus the batched one. ([#31](https://github.com/code-rabi/toolception/pull/31))
+  - **Migration:** code that relied on a disabled toolset's tools staying callable must stop doing so.
+- `enable_toolset` and `disable_toolset` are advertised with `destructiveHint: false, idempotentHint: true`. They only change which tools are exposed, so clients no longer need to treat them as destructive. ([#29](https://github.com/code-rabi/toolception/pull/29))
+
+### Fixed
+
+- `PermissionAwareFastifyTransport` waits for the client's orchestrator to be ready before connecting, so a bundle that preloads toolsets in the background no longer answers `tools/list` with `Method not found`. ([#30](https://github.com/code-rabi/toolception/pull/30))
 
 ## [0.7.0]
 

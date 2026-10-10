@@ -83,10 +83,23 @@ export class ServerOrchestrator {
     initial: string[] | "ALL" | undefined
   ): Promise<void> {
     try {
-      if (initial === "ALL") {
-        await this.manager.enableToolsets(this.resolver.getAvailableToolsets());
-      } else if (Array.isArray(initial) && initial.length > 0) {
-        await this.manager.enableToolsets(initial);
+      const names =
+        initial === "ALL"
+          ? this.resolver.getAvailableToolsets()
+          : Array.isArray(initial)
+            ? initial
+            : [];
+      if (names.length > 0) {
+        // enableToolsets reports failures in its result instead of throwing.
+        // Only a failure while registering tools carries a code; refusals made
+        // before any registration (policy, already enabled) leave nothing partial.
+        const { results } = await this.manager.enableToolsets(names);
+        const failures = results.filter((r) => !r.success && r.code);
+        if (failures.length > 0) {
+          throw new Error(
+            `Failed to enable startup toolsets: ${failures.map((r) => r.message).join("; ")}`
+          );
+        }
       }
     } catch (error) {
       this.initError =

@@ -10,6 +10,7 @@ import type {
   ToolSetDefinition,
   ToolingErrorCode,
 } from "../types/index.js";
+import { ToolingError } from "../errors/ToolingError.js";
 import { ModuleResolver } from "../mode/ModuleResolver.js";
 import { ToolRegistry } from "./ToolRegistry.js";
 import type { DynamicToolManagerOptions } from "./core.types.js";
@@ -82,12 +83,12 @@ export class DynamicToolManager {
    * Enables a single toolset by name.
    * @param toolsetName - The name of the toolset to enable
    * @param skipNotification - If true, skips the tool list change notification
-   * @returns Result object with success status and message
+   * @returns Result object with success status and message; `code` is set only when registering the toolset's tools failed
    */
   public async enableToolset(
     toolsetName: string,
     skipNotification = false
-  ): Promise<{ success: boolean; message: string }> {
+  ): Promise<{ success: boolean; message: string; code?: ToolingErrorCode }> {
     const validation = this.validateToolsetForEnable(toolsetName);
     if ("message" in validation) return validation;
 
@@ -118,6 +119,8 @@ export class DynamicToolManager {
         message: `Failed to enable toolset '${sanitized}': ${
           error instanceof Error ? error.message : "Unknown error"
         }`,
+        // Only this path sets a code; ServerOrchestrator treats it as "failed while registering"
+        code: error instanceof ToolingError ? error.code : "E_INTERNAL",
       };
     }
   }

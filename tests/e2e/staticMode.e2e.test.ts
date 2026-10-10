@@ -242,6 +242,84 @@ describe("STATIC mode E2E", () => {
     });
   });
 
+  describe("when a client's toolsets fail to load", () => {
+    let server: Awaited<ReturnType<typeof createMcpServer>>;
+    let port: number;
+    let flakyAttempts = 0;
+
+    beforeAll(async () => {
+      port = await getAvailablePort();
+      server = await createMcpServer({
+        createServer: () =>
+          new McpServer({
+            name: "test-static-failing-preload",
+            version: "1.0.0",
+          }),
+        catalog: sessionContextCatalog,
+        moduleLoaders: {
+          // Loads fine for the startup check (no token). For "bad" it returns
+          // two tools with one name, so registration fails halfway through.
+          tenant: async (ctx: any) => {
+            const tools = await sessionContextModuleLoaders.tenant(ctx);
+            if (ctx?.API_TOKEN === "bad") return [...tools, ...tools];
+            if (ctx?.API_TOKEN === "flaky" && flakyAttempts++ === 0) {
+              return [...tools, ...tools];
+            }
+            return tools;
+          },
+        },
+        sessionContext: {
+          enabled: true,
+          queryParam: {
+            name: "config",
+            encoding: "base64",
+            allowedKeys: ["API_TOKEN"],
+          },
+          merge: "shallow",
+        },
+        startup: { mode: "STATIC", toolsets: "ALL" },
+        http: { port },
+      });
+      await server.start();
+    });
+
+    afterAll(async () => {
+      await server.close();
+    });
+
+    const connect = async (clientId: string, token: string) => {
+      const config = Buffer.from(JSON.stringify({ API_TOKEN: token })).toString("base64");
+      const transport = new StreamableHTTPClientTransport(
+        new URL(`http://localhost:${port}/mcp?config=${config}`),
+        { requestInit: { headers: { "mcp-client-id": clientId } } }
+      );
+      const client = new Client({ name: "test", version: "1.0.0" });
+      await client.connect(transport);
+      return client;
+    };
+
+    it("rejects the client instead of connecting with partial tools", async () => {
+      await expect(connect("failing-preload-client", "bad")).rejects.toThrow(
+        /Failed to load toolsets/
+      );
+    });
+
+    it("keeps serving clients whose toolsets load", async () => {
+      const client = await connect("healthy-preload-client", "good");
+      expect(extractToolNames(await client.listTools())).toContain("tenant.get_context");
+      await client.close();
+    });
+
+    it("lets the same client retry after a failed preload", async () => {
+      await expect(connect("flaky-preload-client", "flaky")).rejects.toThrow(
+        /Failed to load toolsets/
+      );
+      const client = await connect("flaky-preload-client", "flaky");
+      expect(extractToolNames(await client.listTools())).toContain("tenant.get_context");
+      await client.close();
+    });
+  });
+
   describe("with ALL toolsets", () => {
     let server: Awaited<ReturnType<typeof createMcpServer>>;
     let port: number;

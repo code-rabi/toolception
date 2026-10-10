@@ -102,4 +102,58 @@ describe("ServerOrchestrator", () => {
         })
     ).toThrow(/STATIC mode requires valid toolsets or 'ALL'; none were valid/);
   });
+  it("reports not ready when a startup toolset fails while registering tools", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const { server } = createFakeMcpServer();
+      const clashing = {
+        core: catalog.core,
+        other: { name: "Other", description: "", tools: [...catalog.core.tools] },
+      };
+      const orch = new ServerOrchestrator({
+        server,
+        catalog: clashing as any,
+        startup: { mode: "STATIC", toolsets: "ALL" },
+        exposurePolicy: { namespaceToolsWithSetKey: false },
+      });
+      expect(await orch.isReady()).toBe(false);
+      await expect(orch.ensureReady()).rejects.toThrow(
+        /Failed to enable startup toolsets: .*other.*collision/
+      );
+    } finally {
+      error.mockRestore();
+    }
+  });
+
+  it("stays ready when the exposure policy refuses a startup toolset", async () => {
+    const { server } = createFakeMcpServer();
+    const orch = new ServerOrchestrator({
+      server,
+      catalog: catalog as any,
+      startup: { mode: "STATIC", toolsets: "ALL" },
+      exposurePolicy: { denylist: ["ext"] },
+    });
+    expect(await orch.isReady()).toBe(true);
+    expect(orch.getManager().getActiveToolsets()).toEqual(["core"]);
+  });
+
+  it("stays ready when startup.toolsets lists a toolset twice", async () => {
+    const { server } = createFakeMcpServer();
+    const orch = new ServerOrchestrator({
+      server,
+      catalog: catalog as any,
+      startup: { mode: "STATIC", toolsets: ["core", "core"] },
+    });
+    expect(await orch.isReady()).toBe(true);
+  });
+
+  it("reports ready when every startup toolset enables", async () => {
+    const { server } = createFakeMcpServer();
+    const orch = new ServerOrchestrator({
+      server,
+      catalog: catalog as any,
+      startup: { mode: "STATIC", toolsets: "ALL" },
+    });
+    expect(await orch.isReady()).toBe(true);
+  });
 });
