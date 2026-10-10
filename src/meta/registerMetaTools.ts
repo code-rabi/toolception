@@ -46,7 +46,7 @@ export function registerMetaTools(
       {
         description: "Enable a toolset by name",
         inputSchema: { name: z.string().describe("Toolset name") },
-        annotations: { destructiveHint: true, idempotentHint: true },
+        annotations: { destructiveHint: false, idempotentHint: true },
       },
       async (args: { name: string }) => {
         const result = await manager.enableToolset(args.name);
@@ -62,7 +62,7 @@ export function registerMetaTools(
       {
         description: "Disable a toolset by name (state only)",
         inputSchema: { name: z.string().describe("Toolset name") },
-        annotations: { destructiveHint: true, idempotentHint: true },
+        annotations: { destructiveHint: false, idempotentHint: true },
       },
       async (args: { name: string }) => {
         const result = await manager.disableToolset(args.name);

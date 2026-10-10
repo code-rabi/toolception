@@ -330,4 +330,28 @@ describe("Meta-tools return formats", () => {
       expect(() => toolRegistry.add("enable_toolset")).toThrow(/collision/i);
     });
   });
+
+  describe("annotations", () => {
+    it("marks enable_toolset and disable_toolset as non-destructive and idempotent", () => {
+      const { tools } = createTestSetup();
+
+      for (const name of ["enable_toolset", "disable_toolset"]) {
+        expect(findTool(tools, name)?.annotations).toEqual({
+          destructiveHint: false,
+          idempotentHint: true,
+        });
+      }
+    });
+
+    it("marks discovery meta-tools as read-only", () => {
+      const { tools } = createTestSetup();
+
+      for (const name of ["list_toolsets", "describe_toolset", "list_tools"]) {
+        expect(findTool(tools, name)?.annotations).toEqual({
+          readOnlyHint: true,
+          idempotentHint: true,
+        });
+      }
+    });
+  });
 });
