@@ -39,13 +39,15 @@ export function registerMetaTools(
 
   // Dynamic-mode only tools: enable/disable toolsets at runtime
   if (mode === "DYNAMIC") {
-    // Register with ToolRegistry for collision detection before server.tool()
+    // Register with ToolRegistry for collision detection before server.registerTool()
     toolRegistry.addForToolset(META_TOOLSET_KEY, "enable_toolset");
-    server.tool(
+    server.registerTool(
       "enable_toolset",
-      "Enable a toolset by name",
-      { name: z.string().describe("Toolset name") },
-      { destructiveHint: true, idempotentHint: true },
+      {
+        description: "Enable a toolset by name",
+        inputSchema: { name: z.string().describe("Toolset name") },
+        annotations: { destructiveHint: true, idempotentHint: true },
+      },
       async (args: { name: string }) => {
         const result = await manager.enableToolset(args.name);
         return {
@@ -55,11 +57,13 @@ export function registerMetaTools(
     );
 
     toolRegistry.addForToolset(META_TOOLSET_KEY, "disable_toolset");
-    server.tool(
+    server.registerTool(
       "disable_toolset",
-      "Disable a toolset by name (state only)",
-      { name: z.string().describe("Toolset name") },
-      { destructiveHint: true, idempotentHint: true },
+      {
+        description: "Disable a toolset by name (state only)",
+        inputSchema: { name: z.string().describe("Toolset name") },
+        annotations: { destructiveHint: true, idempotentHint: true },
+      },
       async (args: { name: string }) => {
         const result = await manager.disableToolset(args.name);
         return {
@@ -69,11 +73,13 @@ export function registerMetaTools(
     );
 
     toolRegistry.addForToolset(META_TOOLSET_KEY, "list_toolsets");
-    server.tool(
+    server.registerTool(
       "list_toolsets",
-      "List available toolsets with active status and definitions",
-      {},
-      { readOnlyHint: true, idempotentHint: true },
+      {
+        description: "List available toolsets with active status and definitions",
+        inputSchema: {},
+        annotations: { readOnlyHint: true, idempotentHint: true },
+      },
       async () => {
         const available = manager.getAvailableToolsets();
         const byToolset = manager.getStatus().toolsetToTools;
@@ -102,11 +108,13 @@ export function registerMetaTools(
     );
 
     toolRegistry.addForToolset(META_TOOLSET_KEY, "describe_toolset");
-    server.tool(
+    server.registerTool(
       "describe_toolset",
-      "Describe a toolset with definition, active status and tools",
-      { name: z.string().describe("Toolset name") },
-      { readOnlyHint: true, idempotentHint: true },
+      {
+        description: "Describe a toolset with definition, active status and tools",
+        inputSchema: { name: z.string().describe("Toolset name") },
+        annotations: { readOnlyHint: true, idempotentHint: true },
+      },
       async (args: { name: string }) => {
         const def = manager.getToolsetDefinition(args.name);
         const byToolset = manager.getStatus().toolsetToTools;
@@ -140,11 +148,13 @@ export function registerMetaTools(
 
   // list_tools is available in both modes
   toolRegistry.addForToolset(META_TOOLSET_KEY, "list_tools");
-  server.tool(
+  server.registerTool(
     "list_tools",
-    "List currently registered tool names (best effort)",
-    {},
-    { readOnlyHint: true, idempotentHint: true },
+    {
+      description: "List currently registered tool names (best effort)",
+      inputSchema: {},
+      annotations: { readOnlyHint: true, idempotentHint: true },
+    },
     async () => {
       const status = manager.getStatus();
       const payload = {

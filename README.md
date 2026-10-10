@@ -98,14 +98,16 @@ const catalog = {
 
 ### Step 4: Define a tool
 
+`inputSchema` should be a Zod raw shape (or a Zod object schema), the same form `McpServer.registerTool` takes. A plain JSON Schema object still works, but clients see an open object schema and arguments reach the handler unvalidated.
+
 ```ts
+import { z } from "zod";
+
 const quoteTool = {
   name: "price",
   description: "Return a fake price",
   inputSchema: {
-    type: "object",
-    properties: { symbol: { type: "string" } },
-    required: ["symbol"],
+    symbol: z.string(),
   },
   handler: async ({ symbol }: { symbol: string }) => ({
     content: [{ type: "text", text: `${symbol}: 123.45` }],
@@ -252,11 +254,7 @@ const adminTool = {
   name: "delete_user",
   description: "Delete a user account",
   inputSchema: {
-    type: "object",
-    properties: {
-      userId: { type: "string", description: "User ID to delete" },
-    },
-    required: ["userId"],
+    userId: z.string().describe("User ID to delete"),
   },
   handler: async ({ userId }: { userId: string }) => ({
     content: [{ type: "text", text: `User ${userId} deleted` }],
@@ -267,11 +265,7 @@ const userTool = {
   name: "get_profile",
   description: "Get user profile information",
   inputSchema: {
-    type: "object",
-    properties: {
-      userId: { type: "string", description: "User ID" },
-    },
-    required: ["userId"],
+    userId: z.string().describe("User ID"),
   },
   handler: async ({ userId }: { userId: string }) => ({
     content: [{ type: "text", text: `Profile for ${userId}: {...}` }],
@@ -847,9 +841,7 @@ const moduleLoaders = {
       name: "echo",
       description: "Echo back provided text",
       inputSchema: {
-        type: "object",
-        properties: { text: { type: "string" } },
-        required: ["text"],
+        text: z.string(),
       },
       handler: async ({ text }: { text: string }) => ({
         content: [{ type: "text", text }],
@@ -935,9 +927,7 @@ const moduleLoaders = {
       name: "echo",
       description: "Echo using a backing service",
       inputSchema: {
-        type: "object",
-        properties: { text: { type: "string" } },
-        required: ["text"],
+        text: z.string(),
       },
       handler: async ({ text }: { text: string }) => {
         const result = await ctx.apiClients.echoService.send(text);
