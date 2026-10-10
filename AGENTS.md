@@ -48,7 +48,7 @@ These are cross-cutting; see leaf Intent Nodes for module-specific invariants.
 1. **All tools → ToolRegistry** — Collision detection happens here only
 2. **`mcp-client-id` required for /mcp** — POST, GET, DELETE all reject without header (400)
 3. **Fail-secure** — Invalid inputs return empty objects/arrays, not errors
-4. **Module loader errors are silent, registration failures are not** — A throwing loader is logged and the toolset activates with fewer tools. A failure while registering a startup toolset's tools (for example a duplicate tool name) makes `isReady()` return `false`: STATIC `createMcpServer` throws at startup and each transport answers the client's `initialize` with a 500 / `-32603` and drops the bundle
+4. **Module loader errors are silent, registration failures are not** — A throwing loader is logged and the toolset activates with fewer tools. A failure while registering a startup toolset's tools (for example a duplicate tool name) makes `isReady()` return `false`: STATIC `createMcpServer` throws at startup and its transport answers the client's `initialize` with a 500 / `-32603` and drops the bundle. `createPermissionBasedMcpServer` is the exception: it enables toolsets in its bundle factory and continues on partial failure
 5. **Disable unregisters tools** — `disableToolset` removes the toolset's tools from the MCP server via the SDK's `RegisteredTool.remove()`; see `src/core/AGENTS.md`
 
 ## Module Index

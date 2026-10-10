@@ -472,7 +472,66 @@ describe("Permission-based E2E", () => {
     });
   });
 
-  describe("bundles whose startup toolsets fail to load", () => {
+  describe("when a permitted toolset fails to register its tools", () => {
+    let server: Awaited<ReturnType<typeof createPermissionBasedMcpServer>>;
+    let port: number;
+
+    beforeAll(async () => {
+      port = await getAvailablePort();
+      server = await createPermissionBasedMcpServer({
+        createServer: () =>
+          new McpServer({ name: "test-partial-failure", version: "1.0.0" }),
+        catalog: {
+          good: { name: "Good", description: "Loads", modules: ["good"] },
+          dup: { name: "Dup", description: "Duplicate tool name", modules: ["dup"] },
+        },
+        moduleLoaders: {
+          good: async () => testCatalog.core.tools!,
+          // One tool twice: registration fails halfway through.
+          dup: async () => [...testCatalog.core.tools!, ...testCatalog.core.tools!],
+        },
+        permissions: { source: "headers" },
+        http: { port },
+      });
+      await server.start();
+    });
+
+    afterAll(async () => {
+      await server.close();
+    });
+
+    const connect = async (clientId: string, toolsets: string) => {
+      const client = new Client({ name: "test", version: "1.0.0" });
+      await client.connect(
+        new StreamableHTTPClientTransport(
+          new URL(`http://localhost:${port}/mcp`),
+          {
+            requestInit: {
+              headers: {
+                "mcp-client-id": clientId,
+                "mcp-toolset-permissions": toolsets,
+              },
+            },
+          }
+        )
+      );
+      return client;
+    };
+
+    // Pins the documented permission behaviour: partial success continues,
+    // so the failed-load rejection of createMcpServer does not apply here.
+    it("still connects with the toolsets that registered", async () => {
+      const client = await connect("partial-client", "good,dup");
+      expect(extractToolNames(await client.listTools())).toContain("good.ping");
+      await client.close();
+    });
+
+    it("refuses a client whose permitted toolsets all failed", async () => {
+      await expect(connect("all-failed-client", "dup")).rejects.toThrow();
+    });
+  });
+
+  describe("transport level: bundles whose startup toolsets fail to load", () => {
     let transport: PermissionAwareFastifyTransport;
     let port: number;
     let flakyAttempts = 0;
@@ -541,7 +600,7 @@ describe("Permission-based E2E", () => {
     });
   });
 
-  describe("bundles that preload asynchronously", () => {
+  describe("transport level: bundles that preload asynchronously", () => {
     const slowCatalog = {
       slow: {
         name: "Slow",

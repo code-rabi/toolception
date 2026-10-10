@@ -8,8 +8,9 @@ Releases before 0.7.0 are described in [GitHub Releases](https://github.com/code
 
 ### Breaking
 
-- A STATIC client (`createMcpServer`) or a permission-aware client (`createPermissionBasedMcpServer`) whose startup toolsets fail to register their tools now gets a JSON-RPC error (`-32603`, HTTP 500, "Failed to load toolsets for this client.") on `initialize` instead of connecting with only some of its tools. The failed bundle is dropped, so the client's next `initialize` retries the load. ([#33](https://github.com/code-rabi/toolception/pull/33), [#30](https://github.com/code-rabi/toolception/pull/30))
+- A STATIC client of `createMcpServer` whose startup toolsets fail to register their tools now gets a JSON-RPC error (`-32603`, HTTP 500, "Failed to load toolsets for this client.") on `initialize` instead of connecting with only some of its tools. The failed bundle is dropped, so the client's next `initialize` retries the load. ([#33](https://github.com/code-rabi/toolception/pull/33))
   - `ServerOrchestrator.isReady()` now returns `false`, and `ensureReady()` throws, when registering a startup toolset's tools fails (for example a duplicate tool name, within a toolset or across toolsets when `namespaceToolsWithSetKey` is off). It used to report ready. `createMcpServer` therefore rejects at startup for such a catalog in STATIC mode, where it used to start with the partial toolset. `enableToolset` results (and the `enable_toolset` meta-tool output) gain an optional `code` on that failure.
+  - `createPermissionBasedMcpServer` is not affected: it enables each client's permitted toolsets itself, still connects a client when only some of them fail (`failedToolsets`), and still answers 403 when all of them fail.
   - Toolsets refused before registration (exposure policy, duplicate names in `startup.toolsets`) and module loader errors do not count as failures.
   - **Migration:** before upgrading, make sure no two startup toolsets register the same tool name (rename or remove the duplicate, or turn on `namespaceToolsWithSetKey`). A catalog that only worked because the collision was swallowed will now fail `initialize`, or fail at startup in STATIC mode.
 
@@ -26,7 +27,7 @@ Releases before 0.7.0 are described in [GitHub Releases](https://github.com/code
 
 ### Fixed
 
-- `PermissionAwareFastifyTransport` waits for the client's orchestrator to be ready before connecting, so a bundle that preloads toolsets in the background no longer answers `tools/list` with `Method not found`. ([#30](https://github.com/code-rabi/toolception/pull/30))
+- `PermissionAwareFastifyTransport` waits for the client's orchestrator to be ready before connecting and, like `FastifyTransport`, answers `500` / `-32603` and drops the bundle when it is not ready. This hardens bundles that preload toolsets in the background, which only a hand-built `createPermissionAwareBundle` callback can produce; `createPermissionBasedMcpServer` already loaded toolsets before returning, so its behaviour is unchanged. ([#30](https://github.com/code-rabi/toolception/pull/30))
 
 ## [0.7.0]
 

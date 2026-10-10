@@ -50,7 +50,7 @@ HTTP Request with mcp-client-id header
   → Create STATIC mode server with allowed toolsets only
   → Return bundle (cached for reuse)
   → On initialize: await bundle.orchestrator.isReady() before server.connect() — the SDK refuses capability registration after connect
-  → not ready → drop the bundle from the cache, respond 500 / JSON-RPC -32603; never connect with partial tools (same as FastifyTransport)
+  → not ready → drop the bundle from the cache, respond 500 / JSON-RPC -32603 (same as FastifyTransport). Only a hand-built bundle whose orchestrator preloads startup toolsets itself can be not ready: `createPermissionBasedMcpServer` builds its orchestrators with `toolsets: []` and enables the permitted ones in the factory, so invariant 4 (partial success continues) still holds there
 ```
 
 ## Anti-patterns
