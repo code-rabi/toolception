@@ -360,11 +360,9 @@ describe("DynamicToolManager disable removes tools", () => {
     return server;
   }
 
-  async function connectManager(tools: any[]) {
+  async function connectManager(catalog: Record<string, unknown>) {
     const server = createServer();
-    const resolver = new ModuleResolver({
-      catalog: { core: { name: "Core", description: "", tools } } as any,
-    });
+    const resolver = new ModuleResolver({ catalog } as any);
     const manager = new DynamicToolManager({ server, resolver });
     const [serverSide, clientSide] = InMemoryTransport.createLinkedPair();
     await server.connect(serverSide);
@@ -378,7 +376,9 @@ describe("DynamicToolManager disable removes tools", () => {
   }
 
   it("makes a disabled toolset's tools unlisted and uncallable", async () => {
-    const { manager, client } = await connectManager([ping]);
+    const { manager, client } = await connectManager({
+      core: { name: "Core", description: "", tools: [ping] },
+    });
     await manager.enableToolset("core");
     expect(await listedNames(client)).toEqual(["meta", "core.ping"]);
 
@@ -387,16 +387,15 @@ describe("DynamicToolManager disable removes tools", () => {
     expect(res.message).toContain("Removed 1 tools");
     expect(await listedNames(client)).toEqual(["meta"]);
 
-    const call = await client
-      .callTool({ name: "core.ping", arguments: {} })
-      .catch((err: Error) => err);
-    const rejected = call instanceof Error;
-    const errorResult = !rejected && (call as { isError?: boolean }).isError;
-    expect(rejected || errorResult).toBe(true);
+    const call = await client.callTool({ name: "core.ping", arguments: {} });
+    expect(call.isError).toBe(true);
+    expect((call.content as any)[0].text).toMatch(/not found/i);
   });
 
   it("frees the tool names so the toolset can be enabled again", async () => {
-    const { manager, client } = await connectManager([ping]);
+    const { manager, client } = await connectManager({
+      core: { name: "Core", description: "", tools: [ping] },
+    });
     await manager.enableToolset("core");
     await manager.disableToolset("core");
     expect(manager.getStatus().tools).toEqual([]);
@@ -409,18 +408,10 @@ describe("DynamicToolManager disable removes tools", () => {
   });
 
   it("removes only the disabled toolset's tools", async () => {
-    const server = createServer();
-    const resolver = new ModuleResolver({
-      catalog: {
-        a: { name: "A", description: "", tools: [ping] },
-        b: { name: "B", description: "", tools: [ping] },
-      } as any,
+    const { manager, client } = await connectManager({
+      a: { name: "A", description: "", tools: [ping] },
+      b: { name: "B", description: "", tools: [ping] },
     });
-    const manager = new DynamicToolManager({ server, resolver });
-    const [serverSide, clientSide] = InMemoryTransport.createLinkedPair();
-    await server.connect(serverSide);
-    const client = new Client({ name: "c", version: "1.0.0" });
-    await client.connect(clientSide);
 
     await manager.enableToolsets(["a", "b"]);
     await manager.disableToolset("a");
@@ -430,11 +421,19 @@ describe("DynamicToolManager disable removes tools", () => {
 
   it("rolls back already registered tools when enabling fails part-way", async () => {
     // The second tool has the same name, so the SDK rejects its registration.
-    const { manager, client } = await connectManager([ping, ping]);
+    const tools = [ping, ping];
+    const { manager, client } = await connectManager({
+      core: { name: "Core", description: "", tools },
+    });
     const res = await manager.enableToolset("core");
     expect(res.success).toBe(false);
     expect(manager.isActive("core")).toBe(false);
     expect(await listedNames(client)).toEqual(["meta"]);
     expect(manager.getStatus().tools).toEqual([]);
+
+    // The rolled-back names are free again once the toolset is fixed.
+    tools.pop();
+    expect((await manager.enableToolset("core")).success).toBe(true);
+    expect(await listedNames(client)).toEqual(["meta", "core.ping"]);
   });
 });

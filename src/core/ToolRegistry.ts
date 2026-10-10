@@ -53,15 +53,12 @@ export class ToolRegistry {
    * Forgets every tool name registered for a toolset, so the names can be registered again.
    *
    * @param toolsetKey - The toolset whose tools to forget
-   * @returns The removed tool names
    */
-  public removeForToolset(toolsetKey: string): string[] {
-    const removed = Array.from(this.toolsetToNames.get(toolsetKey) ?? []);
-    for (const name of removed) {
+  public removeForToolset(toolsetKey: string): void {
+    for (const name of this.toolsetToNames.get(toolsetKey) ?? []) {
       this.names.delete(name);
     }
     this.toolsetToNames.delete(toolsetKey);
-    return removed;
   }
 
   public mapAndValidate(

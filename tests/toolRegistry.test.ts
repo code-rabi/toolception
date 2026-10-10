@@ -226,16 +226,18 @@ describe("ToolRegistry", () => {
       reg.addForToolset("a", "pong");
       reg.addForToolset("b", "other");
 
-      expect(reg.removeForToolset("a")).toEqual(["ping", "pong"]);
+      reg.removeForToolset("a");
       expect(reg.has("ping")).toBe(false);
       expect(reg.list()).toEqual(["other"]);
       expect(reg.listByToolset()).toEqual({ b: ["other"] });
       expect(() => reg.addForToolset("a", "ping")).not.toThrow();
     });
 
-    it("returns an empty list for an unknown toolset", () => {
+    it("ignores an unknown toolset", () => {
       const reg = new ToolRegistry({ namespaceWithToolset: false });
-      expect(reg.removeForToolset("missing")).toEqual([]);
+      reg.add("ping");
+      reg.removeForToolset("missing");
+      expect(reg.list()).toEqual(["ping"]);
     });
   });
 });

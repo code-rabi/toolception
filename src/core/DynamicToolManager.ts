@@ -24,7 +24,7 @@ export class DynamicToolManager {
 
   private readonly activeToolsets = new Set<string>();
   /** SDK handles of each toolset's registered tools, used to unregister them. */
-  private readonly toolHandles = new Map<string, RegisteredTool[]>();
+  private readonly toolHandles = new Map<string, readonly RegisteredTool[]>();
 
   constructor(options: DynamicToolManagerOptions) {
     this.server = options.server;

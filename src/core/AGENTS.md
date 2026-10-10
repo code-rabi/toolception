@@ -17,7 +17,7 @@ Central orchestration layer. Manages toolset lifecycle, tool registration, and s
 3. **Notifications may fail silently** — "Not connected" errors are expected during SSE disconnect and are swallowed.
 4. **Namespacing applied BEFORE collision check** — `mapAndValidate()` generates safe names first, then checks for conflicts.
 5. **Toolset added to activeToolsets AFTER registration** — All tools must register successfully before toolset is marked active. A partial failure removes the tools already registered, so nothing is left callable and the toolset can be enabled again.
-6. **`enableToolsets()` batches notifications** — Calls `enableToolset(name, skipNotification=true)` per toolset, sends one `tools/list_changed` notification at the end.
+6. **`enableToolsets()` batches notifications** — Calls `enableToolset(name, skipNotification=true)` per toolset, sends one `tools/list_changed` notification at the end. The SDK also sends its own `tools/list_changed` for every `registerTool()` and `remove()` call on a connected server, so a disable of N tools sends N+1.
 7. **JSON Schema `inputSchema` uses `registerTool` with a passthrough object** — The SDK rejects plain JSON Schema as a tool schema. Zod raw shapes and schemas are passed to `registerTool` as is. Clients see an open object schema for JSON Schema tools, not the declared one.
 
 ## Enable Toolset Flow
