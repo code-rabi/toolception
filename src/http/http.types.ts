@@ -12,6 +12,25 @@ export interface FastifyTransportOptions {
   logger?: boolean;
   app?: FastifyInstance;
   /**
+   * Origins allowed to call the `/mcp` endpoints (POST, GET, DELETE). The MCP
+   * spec requires servers to validate `Origin` so a malicious web page cannot
+   * reach a local server through DNS rebinding.
+   *
+   * - Not set (default): no check, as in earlier versions.
+   * - Set: a request whose `Origin` header is not listed gets `403`. Requests
+   *   without an `Origin` header (CLI, SDK and server-to-server clients) are
+   *   always allowed. `[]` therefore allows only clients that send no `Origin`.
+   *
+   * Entries are origins such as `"https://app.example.com"`, compared by
+   * scheme, host and port; case and default ports are normalized. Invalid
+   * entries throw when the transport is created. When `cors` is on, only
+   * these origins are also granted CORS access.
+   *
+   * Custom endpoints, `/healthz`, `/tools` and `/.well-known/mcp-config` are
+   * not covered.
+   */
+  allowedOrigins?: readonly string[];
+  /**
    * Optional custom HTTP endpoints to register alongside MCP protocol endpoints.
    * Allows adding REST-like endpoints with Zod validation and type inference.
    */

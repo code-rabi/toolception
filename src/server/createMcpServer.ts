@@ -186,6 +186,9 @@ function buildTransport(
   if (options.http?.app) {
     builder.app(options.http.app);
   }
+  if (options.http?.allowedOrigins) {
+    builder.allowedOrigins(options.http.allowedOrigins);
+  }
   if (options.http?.customEndpoints) {
     builder.customEndpoints(options.http.customEndpoints);
   }

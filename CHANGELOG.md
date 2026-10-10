@@ -4,6 +4,13 @@ All notable changes to `toolception` are listed here. Versions follow [semver](h
 
 Releases before 0.7.0 are described in [GitHub Releases](https://github.com/code-rabi/toolception/releases).
 
+## [Unreleased]
+
+### Added
+
+- `http.allowedOrigins` validates the `Origin` header on the `/mcp` endpoints, as the MCP spec requires. A request with an `Origin` outside the list gets `403`; requests without an `Origin` header are always allowed. When `cors` is on, only the listed origins get CORS access. Not set by default, so existing deployments behave as before.
+  - **Migration:** none needed. To turn it on, pass `http: { allowedOrigins: ["https://app.example.com"] }`.
+
 ## [0.7.0]
 
 ### Breaking
