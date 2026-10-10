@@ -12,7 +12,7 @@ Releases before 0.7.0 are described in [GitHub Releases](https://github.com/code
 
 ### Breaking
 
-- `ServerOrchestrator.isReady()` now returns `false`, and `ensureReady()` throws, when registering a startup toolset's tools fails (for example a tool name that another toolset already registered). It used to report ready. As a result `createMcpServer` rejects at startup for such a catalog in STATIC mode, where it used to start with the partial toolset. Fix the catalog (rename or remove the duplicate tool) before upgrading. Toolsets refused before registration (exposure policy, duplicate names in `startup.toolsets`) and module loader errors do not count as failures.
+- `ServerOrchestrator.isReady()` now returns `false`, and `ensureReady()` throws, when registering a startup toolset's tools fails (for example a duplicate tool name, within a toolset or across toolsets when `namespaceToolsWithSetKey` is off). It used to report ready. As a result `createMcpServer` rejects at startup for such a catalog in STATIC mode, where it used to start with the partial toolset. Fix the catalog (rename or remove the duplicate tool) before upgrading. `enableToolset` results (and the `enable_toolset` meta-tool output) gain an optional `code` on that failure. Toolsets refused before registration (exposure policy, duplicate names in `startup.toolsets`) and module loader errors do not count as failures.
 
 ## [0.7.0]
 
