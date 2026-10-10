@@ -472,6 +472,75 @@ describe("Permission-based E2E", () => {
     });
   });
 
+  describe("bundles whose startup toolsets fail to load", () => {
+    let transport: PermissionAwareFastifyTransport;
+    let port: number;
+    let flakyAttempts = 0;
+
+    beforeAll(async () => {
+      port = await getAvailablePort();
+      transport = PermissionAwareFastifyTransport.builder()
+        .defaultManager(
+          ServerOrchestrator.builder()
+            .server(new McpServer({ name: "base", version: "1.0.0" }))
+            .catalog(testCatalog)
+            .build()
+            .getManager()
+        )
+        .createPermissionAwareBundle(async (context) => {
+          const server = new McpServer({ name: "failing-bundle", version: "1.0.0" });
+          const orchestrator = ServerOrchestrator.builder()
+            .server(server)
+            .catalog({
+              dup: { name: "Dup", description: "Duplicate tool name", modules: ["dup"] },
+            })
+            .moduleLoaders({
+              // Returning one tool twice makes registration fail halfway through.
+              dup: async () => {
+                const tools = testCatalog.core.tools!;
+                const fail =
+                  context.clientId === "failing-client" ||
+                  (context.clientId === "flaky-client" && flakyAttempts++ === 0);
+                return fail ? [...tools, ...tools] : tools;
+              },
+            })
+            .startup({ mode: "STATIC", toolsets: ["dup"] })
+            .registerMetaTools(false)
+            .build();
+          return { server, orchestrator, allowedToolsets: ["dup"], failedToolsets: [] };
+        })
+        .port(port)
+        .build();
+      await transport.start();
+    });
+
+    afterAll(async () => {
+      await transport.stop();
+    });
+
+    const connect = async (clientId: string) => {
+      const client = new Client({ name: "test", version: "1.0.0" });
+      await client.connect(
+        new StreamableHTTPClientTransport(
+          new URL(`http://localhost:${port}/mcp`),
+          { requestInit: { headers: { "mcp-client-id": clientId } } }
+        )
+      );
+      return client;
+    };
+
+    it("rejects the client instead of connecting with partial tools", async () => {
+      await expect(connect("failing-client")).rejects.toThrow(/Failed to load toolsets/);
+    });
+
+    it("lets the same client retry after a failed load", async () => {
+      await expect(connect("flaky-client")).rejects.toThrow(/Failed to load toolsets/);
+      const client = await connect("flaky-client");
+      expect(extractToolNames(await client.listTools())).toContain("dup.ping");
+      await client.close();
+    });
+  });
+
   describe("bundles that preload asynchronously", () => {
     const slowCatalog = {
       slow: {

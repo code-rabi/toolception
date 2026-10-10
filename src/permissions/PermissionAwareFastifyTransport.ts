@@ -364,7 +364,23 @@ export class PermissionAwareFastifyTransport {
           try {
             // Bundles may preload toolsets asynchronously; the SDK refuses to
             // register tool capabilities once connected, so wait for them first.
-            await bundle.orchestrator.isReady();
+            const ready = await bundle.orchestrator.isReady();
+            if (!ready) {
+              // A failed preload is cached on the orchestrator for good, so drop
+              // the bundle and let the client's next initialize start a fresh one.
+              if (this.clientCache.get(context.clientId) === bundle) {
+                this.clientCache.delete(context.clientId);
+              }
+              reply.code(500);
+              return {
+                jsonrpc: "2.0",
+                error: {
+                  code: -32603,
+                  message: "Failed to load toolsets for this client.",
+                },
+                id: null,
+              };
+            }
             await bundle.server.connect(transport);
           } catch (error) {
             reply.code(500);

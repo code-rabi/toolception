@@ -50,6 +50,7 @@ HTTP Request with mcp-client-id header
   → Create STATIC mode server with allowed toolsets only
   → Return bundle (cached for reuse)
   → On initialize: await bundle.orchestrator.isReady() before server.connect() — the SDK refuses capability registration after connect
+  → not ready → drop the bundle from the cache, respond 500 / JSON-RPC -32603; never connect with partial tools (same as FastifyTransport)
 ```
 
 ## Anti-patterns

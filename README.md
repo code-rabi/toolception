@@ -899,6 +899,7 @@ Notes
 - Policy is enforced at enable time (via meta-tools or static preload).
 - If both `allowlist` and `denylist` are present, the entry must be in `allowlist` and not in `denylist` to pass.
 - Namespacing is applied consistently at registration time and reflected in `GET /tools`.
+- A startup toolset whose tools fail to register (for example a duplicate tool name, within a toolset or across toolsets when `namespaceToolsWithSetKey` is off) is a startup failure, not a partial start: `createMcpServer` in STATIC mode rejects at startup, and over HTTP the client's `initialize` returns a JSON-RPC `-32603` error (HTTP 500) and is retried on its next `initialize`. A module loader that throws is only logged, and its toolset activates with no tools.
 
 #### options.context (optional)
 
