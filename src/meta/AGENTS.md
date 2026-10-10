@@ -20,7 +20,7 @@ Registers meta-tools on MCP servers for runtime toolset management. Called by Se
 
 1. **`_meta` is a reserved toolset key** — If a catalog uses `"_meta"` as a toolset key, ToolRegistry will detect a name collision at registration time. Never use this key in the catalog.
 2. **Meta-tools registered via ToolRegistry** — Same collision detection path as user tools. Meta-tools appear in `toolRegistry.list()` and `toolRegistry.listByToolset()`.
-3. **`enable_toolset` / `disable_toolset` annotated with `destructiveHint: false, idempotentHint: true`** — They change which tools are exposed but destroy nothing, and calling either again is a no-op. Visible to LLM clients via MCP tool annotations. Discovery tools (`list_*`, `describe_*`) use `readOnlyHint: true`.
+3. **`enable_toolset` / `disable_toolset` annotated with `destructiveHint: false, idempotentHint: true`** — They change which tools are exposed but destroy nothing, and repeating either call has no further effect on state. Visible to LLM clients via MCP tool annotations. Discovery tools (`list_*`, `describe_*`) use `readOnlyHint: true`.
 
 ## Anti-patterns
 
