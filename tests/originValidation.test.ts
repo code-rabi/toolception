@@ -49,6 +49,10 @@ describe("normalizeOrigin", () => {
     );
   });
 
+  it("lower-cases the host of non-http schemes", () => {
+    expect(normalizeOrigin("vscode-webview://ABC")).toBe("vscode-webview://abc");
+  });
+
   it("rejects values that are not origins", () => {
     expect(normalizeOrigin("null")).toBeUndefined();
     expect(normalizeOrigin("not a url")).toBeUndefined();
@@ -151,7 +155,7 @@ describe.each(["standard", "permission"] as const)(
       expect(res.statusCode).toBe(400);
     });
 
-    it("rejects the literal Origin: null unless listed", async () => {
+    it("always rejects the literal Origin: null", async () => {
       const app = await start([ALLOWED]);
       const res = await app.inject({
         method: "POST",

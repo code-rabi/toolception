@@ -2,8 +2,10 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 
 /**
  * Reduces an origin string to `scheme://host[:port]` in lower case, with
- * default ports dropped. Works for non-http schemes too (`URL.origin` is
- * `"null"` for those), so entries like `vscode-webview://abc` can be listed.
+ * default ports dropped. Built from `protocol` and `host` rather than
+ * `URL.origin`, which is `"null"` for non-http schemes, so entries like
+ * `vscode-webview://abc` can be listed. The host is lower-cased explicitly
+ * because `URL` keeps its case for non-http schemes.
  *
  * @param value - Raw origin, such as the `Origin` header or an allowlist entry
  * @returns The canonical origin, or `undefined` when `value` is not an origin
@@ -12,7 +14,7 @@ export function normalizeOrigin(value: string): string | undefined {
   try {
     const url = new URL(value);
     if (!url.host) return undefined;
-    return `${url.protocol}//${url.host}`;
+    return `${url.protocol}//${url.host.toLowerCase()}`;
   } catch {
     return undefined;
   }
@@ -52,8 +54,9 @@ export type OriginGuard = (
  * Requests without an `Origin` header are always allowed: they come from
  * non-browser clients, which are not the threat this check addresses. A
  * request that carries an `Origin` outside the allowlist gets `403`. The
- * header must already be a bare origin (lower-case, no path, userinfo or
- * query), which is what browsers send; anything looser is refused.
+ * header must already be a bare origin (no path, userinfo, query or explicit
+ * default port), which is what browsers send; anything looser is refused.
+ * Letter case is ignored.
  *
  * @param allowedOrigins - Canonical origins from {@link normalizeAllowedOrigins}
  * @returns The hook
