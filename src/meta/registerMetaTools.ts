@@ -60,7 +60,7 @@ export function registerMetaTools(
     server.registerTool(
       "disable_toolset",
       {
-        description: "Disable a toolset by name (state only)",
+        description: "Disable a toolset by name and remove its tools",
         inputSchema: { name: z.string().describe("Toolset name") },
         annotations: { destructiveHint: false, idempotentHint: true },
       },

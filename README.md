@@ -1081,7 +1081,7 @@ Meta-tools are registered based on mode:
 **DYNAMIC mode** (registered by default, or when `registerMetaTools` is true):
 
 - `enable_toolset` - Enable a toolset by name
-- `disable_toolset` - Disable a toolset by name (state only; tools remain registered)
+- `disable_toolset` - Disable a toolset by name (unregisters the toolset's tools, so clients can no longer list or call them)
 - `list_toolsets` - List available toolsets with active status
 - `describe_toolset` - Describe a specific toolset with definition and tools
 - `list_tools` - List currently registered tool names

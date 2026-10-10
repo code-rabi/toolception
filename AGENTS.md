@@ -49,7 +49,7 @@ These are cross-cutting; see leaf Intent Nodes for module-specific invariants.
 2. **`mcp-client-id` required for /mcp** — POST, GET, DELETE all reject without header (400)
 3. **Fail-secure** — Invalid inputs return empty objects/arrays, not errors
 4. **Silent module failures** — Toolsets activate with partial tools if loaders fail
-5. **Disable is state-only** — MCP SDK has no tool unregister; see `src/core/AGENTS.md`
+5. **Disable unregisters tools** — `disableToolset` removes the toolset's tools from the MCP server via the SDK's `RegisteredTool.remove()`; see `src/core/AGENTS.md`
 
 ## Module Index
 

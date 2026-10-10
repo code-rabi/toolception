@@ -340,3 +340,100 @@ describe("DynamicToolManager with a real McpServer", () => {
     expect((res.content as any)[0].text).toBe("MSFT");
   });
 });
+
+describe("DynamicToolManager disable removes tools", () => {
+  const ping = {
+    name: "ping",
+    description: "Ping",
+    inputSchema: {},
+    handler: async () => ({ content: [{ type: "text", text: "pong" }] }),
+  };
+
+  // The SDK can't add the tools capability after connect, so, like the meta-tools
+  // do in a real server, register one tool before connecting.
+  function createServer() {
+    const server = new McpServer(
+      { name: "t", version: "1.0.0" },
+      { capabilities: { tools: { listChanged: true } } }
+    );
+    server.registerTool("meta", { inputSchema: {} }, async () => ({ content: [] }));
+    return server;
+  }
+
+  async function connectManager(catalog: Record<string, unknown>) {
+    const server = createServer();
+    const resolver = new ModuleResolver({ catalog } as any);
+    const manager = new DynamicToolManager({ server, resolver });
+    const [serverSide, clientSide] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverSide);
+    const client = new Client({ name: "c", version: "1.0.0" });
+    await client.connect(clientSide);
+    return { manager, client };
+  }
+
+  async function listedNames(client: Client) {
+    return (await client.listTools()).tools.map((t) => t.name);
+  }
+
+  it("makes a disabled toolset's tools unlisted and uncallable", async () => {
+    const { manager, client } = await connectManager({
+      core: { name: "Core", description: "", tools: [ping] },
+    });
+    await manager.enableToolset("core");
+    expect(await listedNames(client)).toEqual(["meta", "core.ping"]);
+
+    const res = await manager.disableToolset("core");
+    expect(res.success).toBe(true);
+    expect(res.message).toContain("Removed 1 tools");
+    expect(await listedNames(client)).toEqual(["meta"]);
+
+    const call = await client.callTool({ name: "core.ping", arguments: {} });
+    expect(call.isError).toBe(true);
+    expect((call.content as any)[0].text).toMatch(/not found/i);
+  });
+
+  it("frees the tool names so the toolset can be enabled again", async () => {
+    const { manager, client } = await connectManager({
+      core: { name: "Core", description: "", tools: [ping] },
+    });
+    await manager.enableToolset("core");
+    await manager.disableToolset("core");
+    expect(manager.getStatus().tools).toEqual([]);
+    expect(manager.getStatus().toolsetToTools).toEqual({});
+
+    const again = await manager.enableToolset("core");
+    expect(again.success).toBe(true);
+    const res = await client.callTool({ name: "core.ping", arguments: {} });
+    expect((res.content as any)[0].text).toBe("pong");
+  });
+
+  it("removes only the disabled toolset's tools", async () => {
+    const { manager, client } = await connectManager({
+      a: { name: "A", description: "", tools: [ping] },
+      b: { name: "B", description: "", tools: [ping] },
+    });
+
+    await manager.enableToolsets(["a", "b"]);
+    await manager.disableToolset("a");
+    expect(await listedNames(client)).toEqual(["meta", "b.ping"]);
+    expect(manager.getActiveToolsets()).toEqual(["b"]);
+  });
+
+  it("rolls back already registered tools when enabling fails part-way", async () => {
+    // The second tool has the same name, so the SDK rejects its registration.
+    const tools = [ping, ping];
+    const { manager, client } = await connectManager({
+      core: { name: "Core", description: "", tools },
+    });
+    const res = await manager.enableToolset("core");
+    expect(res.success).toBe(false);
+    expect(manager.isActive("core")).toBe(false);
+    expect(await listedNames(client)).toEqual(["meta"]);
+    expect(manager.getStatus().tools).toEqual([]);
+
+    // The rolled-back names are free again once the toolset is fixed.
+    tools.pop();
+    expect((await manager.enableToolset("core")).success).toBe(true);
+    expect(await listedNames(client)).toEqual(["meta", "core.ping"]);
+  });
+});
