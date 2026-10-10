@@ -49,6 +49,21 @@ export class ToolRegistry {
     this.toolsetToNames.set(toolsetKey, set);
   }
 
+  /**
+   * Forgets every tool name registered for a toolset, so the names can be registered again.
+   *
+   * @param toolsetKey - The toolset whose tools to forget
+   * @returns The removed tool names
+   */
+  public removeForToolset(toolsetKey: string): string[] {
+    const removed = Array.from(this.toolsetToNames.get(toolsetKey) ?? []);
+    for (const name of removed) {
+      this.names.delete(name);
+    }
+    this.toolsetToNames.delete(toolsetKey);
+    return removed;
+  }
+
   public mapAndValidate(
     toolsetKey: string,
     tools: McpToolDefinition[]

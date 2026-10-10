@@ -13,10 +13,10 @@ Central orchestration layer. Manages toolset lifecycle, tool registration, and s
 ## Invariants
 
 1. **All tools go through ToolRegistry** — Collision detection happens here only. Bypassing it causes silent name conflicts.
-2. **Disable is state-only** — MCP SDK has no `server.removeTool()`; disabled toolsets' tools remain callable by clients. `activeToolsets` tracks logical state only.
+2. **Disable unregisters the tools** — `DynamicToolManager` keeps the `RegisteredTool` handle `registerTool()` returns for each tool and calls `remove()` on disable, then frees the names in ToolRegistry (`removeForToolset`) so the toolset can be enabled again. Disabled tools are neither listed nor callable.
 3. **Notifications may fail silently** — "Not connected" errors are expected during SSE disconnect and are swallowed.
 4. **Namespacing applied BEFORE collision check** — `mapAndValidate()` generates safe names first, then checks for conflicts.
-5. **Toolset added to activeToolsets AFTER registration** — All tools must register successfully before toolset is marked active. Partial failures leave the toolset inactive but orphaned tools remain registered (MCP limitation).
+5. **Toolset added to activeToolsets AFTER registration** — All tools must register successfully before toolset is marked active. A partial failure removes the tools already registered, so nothing is left callable and the toolset can be enabled again.
 6. **`enableToolsets()` batches notifications** — Calls `enableToolset(name, skipNotification=true)` per toolset, sends one `tools/list_changed` notification at the end.
 7. **JSON Schema `inputSchema` uses `registerTool` with a passthrough object** — The SDK rejects plain JSON Schema as a tool schema. Zod raw shapes and schemas are passed to `registerTool` as is. Clients see an open object schema for JSON Schema tools, not the declared one.
 
@@ -38,7 +38,7 @@ Tools are registered with `McpServer.registerTool` (the 5-arg `server.tool()` ov
 ## Anti-patterns
 
 - Bypassing ToolRegistry for tool registration (causes collision issues)
-- Expecting disable to unregister tools from MCP (it can't)
+- Registering tools without keeping the `registerTool()` handle (disable and failed-enable rollback can't remove them)
 - Throwing on notification failures (they're expected in SSE disconnect)
 - Using `_meta` as a toolset key in the catalog (reserved for meta-tools — see `src/meta/AGENTS.md`)
 
