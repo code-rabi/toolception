@@ -22,7 +22,7 @@ export async function createMcpServer(
 
   const mode: Exclude<Mode, "ALL"> = options.startup?.mode ?? "DYNAMIC";
   const shouldRegisterMetaTools = resolveMetaToolsFlag(options.registerMetaTools, mode);
-  const sessionContextResolver = buildSessionContextResolver(options, mode);
+  const sessionContextResolver = buildSessionContextResolver(options);
   const notifyToolsChanged = createToolsChangedNotifier();
 
   // --- Build base server & orchestrator ---
@@ -37,7 +37,7 @@ export async function createMcpServer(
 
   // --- Build transport ---
   const bundleFactory = createBundleFactory(
-    options, mode, baseServer, baseOrchestrator, shouldRegisterMetaTools, notifyToolsChanged
+    options, mode, shouldRegisterMetaTools, notifyToolsChanged
   );
   const transport = buildTransport(
     options, baseOrchestrator.getManager(), bundleFactory, sessionContextResolver
@@ -69,16 +69,13 @@ function validateOptions(options: CreateMcpServerOptions): void {
 }
 
 /**
- * Validates session context config, builds the resolver, and warns about
- * limited utility in STATIC mode.
+ * Validates session context config and builds the resolver.
  *
  * @param options - Server creation options containing sessionContext config
- * @param mode - The resolved server mode
  * @returns A SessionContextResolver if configured, otherwise undefined
  */
 function buildSessionContextResolver(
-  options: CreateMcpServerOptions,
-  mode: Exclude<Mode, "ALL">
+  options: CreateMcpServerOptions
 ): SessionContextResolver | undefined {
   if (!options.sessionContext) return undefined;
 
@@ -90,13 +87,6 @@ function buildSessionContextResolver(
     .contextResolver(options.sessionContext.contextResolver)
     .merge(options.sessionContext.merge ?? "shallow")
     .build();
-
-  if (mode === "STATIC" && options.sessionContext.enabled !== false) {
-    console.warn(
-      "sessionContext has limited effect in STATIC mode: all clients share the same server instance with base context. " +
-        "Use DYNAMIC mode for per-session context isolation."
-    );
-  }
 
   return resolver;
 }
@@ -141,13 +131,13 @@ function buildOrchestrator(
 
 /**
  * Creates the bundle factory callback for the transport layer.
- * In STATIC mode all clients share one server + orchestrator.
- * In DYNAMIC mode a fresh server + orchestrator is created per client.
+ * Every client gets a fresh server + orchestrator in both modes: the MCP SDK
+ * binds one McpServer to one transport, so a shared server would force each
+ * new client to disconnect the previous one. In STATIC mode the per-client
+ * orchestrator preloads the startup toolsets with the client's merged context.
  *
  * @param options - Server creation options
- * @param mode - STATIC reuses base bundle; DYNAMIC creates fresh per client
- * @param baseServer - The shared base server instance
- * @param baseOrchestrator - The shared base orchestrator
+ * @param mode - The resolved server mode
  * @param shouldRegisterMetaTools - Pre-resolved meta-tools flag
  * @param notifyToolsChanged - Notifier function for tool list changes
  * @returns Bundle factory callback for the transport layer
@@ -155,18 +145,10 @@ function buildOrchestrator(
 function createBundleFactory(
   options: CreateMcpServerOptions,
   mode: Exclude<Mode, "ALL">,
-  baseServer: McpServer,
-  baseOrchestrator: ServerOrchestrator,
   shouldRegisterMetaTools: boolean,
   notifyToolsChanged: (target: unknown) => Promise<void>
 ): CreateBundleCallback {
   return (mergedContext?: unknown) => {
-    if (mode === "STATIC") {
-      // STATIC: all clients share one server + orchestrator
-      return { server: baseServer, orchestrator: baseOrchestrator };
-    }
-
-    // DYNAMIC: fresh server + orchestrator per client
     const effectiveContext = mergedContext ?? options.context;
     const clientServer: McpServer = options.createServer();
     const clientOrchestrator = buildOrchestrator(

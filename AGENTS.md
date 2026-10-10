@@ -24,7 +24,7 @@ src/
 | | DYNAMIC | STATIC |
 |---|---|---|
 | Toolsets | Enabled at runtime via meta-tools | Pre-loaded at startup |
-| Server instances | Per-client | Shared singleton |
+| Server instances | Per-client | Per-client (startup toolsets preloaded) |
 | Meta-tools | All 5 registered | `list_tools` only |
 | Use case | Task-specific, lazy loading | Fixed pipelines |
 

@@ -110,7 +110,7 @@ describe("createMcpServer", () => {
     expect(args?.[3]).toEqual(configSchema);
   });
 
-  it("reuses a single instance in STATIC mode bundles", async () => {
+  it("creates a fresh instance per bundle in STATIC mode", async () => {
     const f = makeFakeServerFactory();
     await createMcpServer({
       catalog,
@@ -120,7 +120,9 @@ describe("createMcpServer", () => {
     const bundleFactory = (FastifyTransportMock as any).lastArgs?.[1];
     const b1 = bundleFactory();
     const b2 = bundleFactory();
-    expect(b1.server).toBe(b2.server);
+    expect(f.created.length).toBe(3);
+    expect(b1.server).not.toBe(b2.server);
+    expect(b1.server).not.toBe(f.created[0].server);
   });
 
   it("creates a fresh instance per bundle in DYNAMIC mode", async () => {
@@ -149,7 +151,7 @@ describe("createMcpServer", () => {
     expect(s2.calls.includes("list_tools")).toBe(true);
   });
 
-  it("does not re-register tools in STATIC mode across multiple clients", async () => {
+  it("preloads startup toolsets once on each STATIC client server", async () => {
     const f = makeFakeServerFactory();
     const staticCatalog = {
       core: {
@@ -177,12 +179,40 @@ describe("createMcpServer", () => {
     expect(base.calls.filter((n) => n === "core.ping").length).toBe(1);
 
     const bundleFactory = (FastifyTransportMock as any).lastArgs?.[1];
-    // Simulate two more clients (bundles)
-    bundleFactory();
-    bundleFactory();
+    // Simulate two clients (bundles)
+    const b1 = bundleFactory();
+    const b2 = bundleFactory();
+    await b1.orchestrator.ensureReady();
+    await b2.orchestrator.ensureReady();
 
-    // No additional registrations should have occurred on the shared server
+    // The base server is untouched; each client server registers the tool once
     expect(base.calls.filter((n) => n === "core.ping").length).toBe(1);
+    for (const client of f.created.slice(1)) {
+      expect(client.calls.filter((n) => n === "core.ping").length).toBe(1);
+    }
+  });
+
+  it("passes the merged session context to STATIC client module loaders", async () => {
+    const f = makeFakeServerFactory();
+    const seen: unknown[] = [];
+    await createMcpServer({
+      catalog: { tenant: { name: "Tenant", description: "", modules: ["tenant"] } } as any,
+      moduleLoaders: {
+        tenant: async (ctx?: unknown) => {
+          seen.push(ctx);
+          return [];
+        },
+      },
+      context: { base: true },
+      startup: { mode: "STATIC", toolsets: ["tenant"] },
+      createServer: f.createServer,
+    });
+    expect(seen).toEqual([{ base: true }]);
+
+    const bundleFactory = (FastifyTransportMock as any).lastArgs?.[1];
+    const bundle = bundleFactory({ base: true, API_TOKEN: "client-token" });
+    await bundle.orchestrator.ensureReady();
+    expect(seen[1]).toEqual({ base: true, API_TOKEN: "client-token" });
   });
 
   it("ensures tools are ready immediately in STATIC mode (waits for async module loaders)", async () => {

@@ -238,6 +238,9 @@ export class FastifyTransport {
               bundle!.sessions.delete(transport.sessionId);
           };
           try {
+            // STATIC bundles preload toolsets asynchronously; the SDK refuses to
+            // register tool capabilities once connected, so wait for them first.
+            await bundle.orchestrator.isReady();
             await bundle.server.connect(transport);
           } catch (error) {
             reply.code(500);
