@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { z } from "zod";
 import { registerMetaTools, META_TOOLSET_KEY } from "../src/meta/registerMetaTools.js";
 import { DynamicToolManager } from "../src/core/DynamicToolManager.js";
 import { ModuleResolver } from "../src/mode/ModuleResolver.js";
@@ -14,7 +15,7 @@ describe("Meta-tools return formats", () => {
         {
           name: "ping",
           description: "Returns pong",
-          inputSchema: { type: "object", properties: {} },
+          inputSchema: {},
           handler: async () => ({ content: [{ type: "text", text: "pong" }] }),
         },
       ],
@@ -32,7 +33,7 @@ describe("Meta-tools return formats", () => {
       {
         name: "echo",
         description: "Echoes text",
-        inputSchema: { type: "object", properties: { text: { type: "string" } } },
+        inputSchema: { text: z.string() },
         handler: async ({ text }: { text: string }) => ({
           content: [{ type: "text", text }],
         }),
@@ -304,7 +305,7 @@ describe("Meta-tools return formats", () => {
               {
                 name: "enable_toolset", // Collides with meta-tool
                 description: "A user tool",
-                inputSchema: { type: "object", properties: {} },
+                inputSchema: {},
                 handler: async () => ({ content: [{ type: "text", text: "user" }] }),
               },
             ],

@@ -12,7 +12,7 @@ const catalog: ToolSetCatalog = {
       {
         name: "ping",
         description: "Responds with pong",
-        inputSchema: { type: "object", properties: {} },
+        inputSchema: {},
         handler: async () => ({ content: [{ type: "text", text: "pong" }] }),
       },
     ],

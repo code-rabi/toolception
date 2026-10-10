@@ -50,9 +50,6 @@ const catalog = {
 function makeFakeServer() {
   const calls: string[] = [];
   const server = {
-    tool: (name: string) => {
-      calls.push(name);
-    },
     registerTool: (name: string) => {
       calls.push(name);
     },
@@ -213,7 +210,7 @@ describe("createMcpServer", () => {
             {
               name: "test_tool",
               description: "A test tool",
-              inputSchema: { type: "object", properties: {} },
+              inputSchema: {},
               handler: async () => ({
                 content: [{ type: "text", text: "test" }],
               }),

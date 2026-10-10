@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import type { ZodRawShapeCompat } from "@modelcontextprotocol/sdk/server/zod-compat.js";
 import type {
   ExposurePolicy,
   McpToolDefinition,
@@ -250,42 +251,25 @@ export class DynamicToolManager {
     const hasAnnotations =
       tool.annotations && Object.keys(tool.annotations).length > 0;
 
-    if (!isZodRawShape(tool.inputSchema)) {
-      // SDK >= 1.31 rejects plain JSON Schema objects in server.tool(); older
-      // versions silently treated them as annotations and dropped the args.
-      // Register with a passthrough object so arguments reach the handler.
-      this.server.registerTool(
-        tool.name,
-        {
-          description: tool.description,
-          inputSchema: z.object({}).passthrough(),
-          ...(hasAnnotations ? { annotations: tool.annotations } : {}),
-        },
-        async (args: Record<string, unknown>) => {
-          return await tool.handler(args);
-        }
-      );
-    } else if (hasAnnotations && tool.annotations) {
-      this.server.tool(
-        tool.name,
-        tool.description,
-        tool.inputSchema as Parameters<typeof this.server.tool>[2],
-        tool.annotations,
-        async (args: Record<string, unknown>) => {
-          return await tool.handler(args);
-        }
-      );
-    } else {
-      // Legacy 4-parameter call when no annotations
-      this.server.tool(
-        tool.name,
-        tool.description,
-        tool.inputSchema as Parameters<typeof this.server.tool>[2],
-        async (args: Record<string, unknown>) => {
-          return await tool.handler(args);
-        }
-      );
-    }
+    // SDK >= 1.28 rejects plain JSON Schema inputSchema; older versions silently
+    // treated it as annotations and dropped the args. Non-Zod schemas register
+    // with a passthrough object so arguments still reach the handler.
+    const inputSchema = isZodInputSchema(tool.inputSchema)
+      ? (tool.inputSchema as ZodRawShapeCompat)
+      : z.object({}).passthrough();
+
+    this.server.registerTool(
+      tool.name,
+      {
+        title: tool.annotations?.title,
+        description: tool.description,
+        inputSchema,
+        annotations: hasAnnotations ? tool.annotations : undefined,
+      },
+      async (args: Record<string, unknown>) => {
+        return await tool.handler(args);
+      }
+    );
     this.toolRegistry.addForToolset(toolsetKey, tool.name);
   }
 
@@ -410,20 +394,15 @@ export class DynamicToolManager {
 }
 
 /**
- * Mirrors the SDK's raw-shape check: an empty object, or an object with at
- * least one Zod schema value (e.g. `{ symbol: z.string() }`).
+ * True when the schema is a Zod schema instance (v3 or v4) or a raw shape whose
+ * values are all Zod schemas. An empty object counts as an empty raw shape.
+ *
+ * @param schema - The tool's inputSchema
  */
-function isZodRawShape(schema: unknown): boolean {
+function isZodInputSchema(schema: unknown): boolean {
+  const isZodType = (v: unknown) =>
+    typeof v === "object" && v !== null && ("_def" in v || "_zod" in v);
   if (typeof schema !== "object" || schema === null) return false;
-  const values = Object.values(schema);
-  return values.length === 0 || values.some(isZodTypeLike);
-}
-
-function isZodTypeLike(value: unknown): boolean {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as { parse?: unknown }).parse === "function" &&
-    typeof (value as { safeParse?: unknown }).safeParse === "function"
-  );
+  if (isZodType(schema)) return true;
+  return Object.values(schema).every(isZodType);
 }

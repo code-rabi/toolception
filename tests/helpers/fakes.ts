@@ -15,22 +15,9 @@ export type RegisteredTool = {
 export function createFakeMcpServer(options: { withNotifier?: boolean } = {}) {
   const tools: RegisteredTool[] = [];
   const server: any = {
-    tool(
-      name: string,
-      description: string,
-      schema: any,
-      annotationsOrHandler: any,
-      maybeHandler?: any
-    ) {
-      // Support both 4-param (legacy) and 5-param (with annotations) signatures
-      const isLegacy = typeof annotationsOrHandler === "function";
-      const annotations = isLegacy ? undefined : annotationsOrHandler;
-      const handler = isLegacy ? annotationsOrHandler : maybeHandler;
-      tools.push({ name, description, schema, annotations, handler });
-    },
     registerTool(
       name: string,
-      config: { description: string; inputSchema?: any; annotations?: any },
+      config: { description: string; inputSchema?: any; annotations?: RegisteredTool["annotations"] },
       handler: (args: any) => Promise<any> | any
     ) {
       tools.push({
