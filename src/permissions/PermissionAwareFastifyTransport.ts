@@ -19,6 +19,10 @@ import type {
 } from "./permissions.types.js";
 import type { CustomEndpointDefinition } from "../http/http.types.js";
 import { registerCustomEndpoints } from "../http/http.utils.js";
+import {
+  createOriginGuard,
+  normalizeAllowedOrigins,
+} from "../http/originValidation.js";
 
 const mcpClientIdSchema = z
   .string({ message: "Missing required mcp-client-id header" })
@@ -33,8 +37,11 @@ export class PermissionAwareFastifyTransport {
     cors: boolean;
     logger: boolean;
     app?: FastifyInstance;
+    allowedOrigins?: string[];
     customEndpoints?: CustomEndpointDefinition[];
   };
+  /** Route options for the `/mcp` endpoints; carries the Origin check when configured. */
+  readonly #mcpRouteOptions: { onRequest?: ReturnType<typeof createOriginGuard> };
   private readonly defaultManager: DynamicToolManager;
   private readonly createPermissionAwareBundle: (
     context: ClientRequestContext
@@ -73,8 +80,14 @@ export class PermissionAwareFastifyTransport {
       cors: options.cors ?? true,
       logger: options.logger ?? false,
       app: options.app,
+      allowedOrigins: options.allowedOrigins
+        ? normalizeAllowedOrigins(options.allowedOrigins)
+        : undefined,
       customEndpoints: options.customEndpoints,
     };
+    this.#mcpRouteOptions = this.options.allowedOrigins
+      ? { onRequest: createOriginGuard(this.options.allowedOrigins) }
+      : {};
     this.configSchema = configSchema;
   }
 
@@ -92,6 +105,7 @@ export class PermissionAwareFastifyTransport {
       cors(value: boolean) { opts.cors = value; return builder; },
       logger(value: boolean) { opts.logger = value; return builder; },
       app(value: FastifyInstance) { opts.app = value; return builder; },
+      allowedOrigins(value: string[]) { opts.allowedOrigins = value; return builder; },
       customEndpoints(value: CustomEndpointDefinition[]) { opts.customEndpoints = value; return builder; },
       configSchema(value: object) { _configSchema = value; return builder; },
       build() { return new PermissionAwareFastifyTransport(_defaultManager, _createPermissionAwareBundle, opts, _configSchema); },
@@ -103,7 +117,7 @@ export class PermissionAwareFastifyTransport {
     if (this.app) return;
     const app = this.options.app ?? Fastify({ logger: this.options.logger });
     if (this.options.cors) {
-      await app.register(cors, { origin: true });
+      await app.register(cors, { origin: this.options.allowedOrigins ?? true });
     }
 
     const base = this.#normalizeBasePath(this.options.basePath);
@@ -270,6 +284,7 @@ export class PermissionAwareFastifyTransport {
   #registerMcpPostEndpoint(app: FastifyInstance, base: string): void {
     app.post(
       `${base}/mcp`,
+      this.#mcpRouteOptions,
       async (req: FastifyRequest, reply: FastifyReply) => {
         // Validate mcp-client-id header
         const parseResult = mcpClientIdSchema.safeParse(
@@ -376,7 +391,7 @@ export class PermissionAwareFastifyTransport {
    * @param base - Base path for routes
    */
   #registerMcpGetEndpoint(app: FastifyInstance, base: string): void {
-    app.get(`${base}/mcp`, async (req: FastifyRequest, reply: FastifyReply) => {
+    app.get(`${base}/mcp`, this.#mcpRouteOptions, async (req: FastifyRequest, reply: FastifyReply) => {
       const clientIdHeader = (
         req.headers["mcp-client-id"] as string | undefined
       )?.trim();
@@ -413,6 +428,7 @@ export class PermissionAwareFastifyTransport {
   #registerMcpDeleteEndpoint(app: FastifyInstance, base: string): void {
     app.delete(
       `${base}/mcp`,
+      this.#mcpRouteOptions,
       async (req: FastifyRequest, reply: FastifyReply) => {
         const clientIdHeader = (
           req.headers["mcp-client-id"] as string | undefined

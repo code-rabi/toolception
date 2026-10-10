@@ -10,6 +10,12 @@ export interface PermissionAwareFastifyTransportOptions {
   logger?: boolean;
   app?: import("fastify").FastifyInstance;
   /**
+   * Origins allowed to call the `/mcp` endpoints. Not set means no check;
+   * requests without an `Origin` header are always allowed. See
+   * `FastifyTransportOptions.allowedOrigins`.
+   */
+  allowedOrigins?: string[];
+  /**
    * Optional custom HTTP endpoints to register alongside MCP protocol endpoints.
    * Allows adding REST-like endpoints with Zod validation and type inference.
    * Handlers receive permission context (allowedToolsets, failedToolsets).

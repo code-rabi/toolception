@@ -7,6 +7,7 @@ Provides Fastify-based HTTP transport for the MCP protocol. Handles SSE streams,
 ## Key Components
 
 - **FastifyTransport** (`FastifyTransport.ts`) — Main HTTP transport. Per-client bundles via ClientResourceCache, optional SessionContextResolver for context differentiation.
+- **Origin validation** (`originValidation.ts`) — `normalizeAllowedOrigins()` + `createOriginGuard()`; each transport applies the guard as an `onRequest` hook on `/mcp` POST/GET/DELETE only, when `allowedOrigins` is set.
 - **Custom Endpoints** (`customEndpoints.ts`, `endpointRegistration.ts`) — Type-safe endpoint definitions with Zod schemas. `defineEndpoint()` / `definePermissionAwareEndpoint()` helpers.
 
 ## Endpoints
@@ -25,7 +26,8 @@ Provides Fastify-based HTTP transport for the MCP protocol. Handles SSE streams,
 1. **`mcp-client-id` header required** — All `/mcp` endpoints reject without it (400). Custom endpoints auto-generate `anon-${UUID}` fallback instead.
 2. **Session created on POST /mcp initialize** — `isInitializeRequest()` from MCP SDK detects first-contact requests. New session ID generated via `randomUUID()`, stored in `bundle.sessions` Map.
 3. **Cache key uses `resolveSessionContext()`** — All three `/mcp` handlers (POST, GET, DELETE) must derive the cache key through the same `resolveSessionContext()` path. Using plain `clientId` causes cache misses when session context is active.
-4. **Reserved paths cannot be overridden** — `/mcp`, `/healthz`, `/tools`, `/.well-known/mcp-config` are registered before custom endpoints.
+4. **Origin check is opt-in and `/mcp`-only** — `allowedOrigins` unset means no check (backward compatible). When set: no `Origin` header → allowed (non-browser clients), listed → allowed, anything else (including `null`) → 403 before the `mcp-client-id` check. Invalid entries throw at transport construction. Both transports must keep the same behaviour, and `cors` narrows to the same list.
+5. **Reserved paths cannot be overridden** — `/mcp`, `/healthz`, `/tools`, `/.well-known/mcp-config` are registered before custom endpoints.
 
 ## Session Lifecycle
 
@@ -66,6 +68,7 @@ Provides Fastify-based HTTP transport for the MCP protocol. Handles SSE streams,
 - Registering endpoints on reserved paths (throws)
 - Sending MCP protocol requests without `mcp-client-id` header (returns 400)
 - Blocking on SSE handlers (should be async)
+- Adding a `*` wildcard to `allowedOrigins` (leave it unset to allow all; the guard rejects non-origin entries on purpose)
 
 ## Dependencies
 
