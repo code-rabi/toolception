@@ -90,14 +90,15 @@ export class ServerOrchestrator {
             ? initial
             : [];
       if (names.length > 0) {
-        // enableToolsets reports failures in its result instead of throwing
-        const { success, results } = await this.manager.enableToolsets(names);
-        if (!success) {
-          const failures = results
-            .filter((r) => !r.success)
-            .map((r) => r.message)
-            .join("; ");
-          throw new Error(`Failed to enable startup toolsets: ${failures}`);
+        // enableToolsets reports failures in its result instead of throwing.
+        // Only a failure while registering tools carries a code; refusals made
+        // before any registration (policy, already enabled) leave nothing partial.
+        const { results } = await this.manager.enableToolsets(names);
+        const failures = results.filter((r) => !r.success && r.code);
+        if (failures.length > 0) {
+          throw new Error(
+            `Failed to enable startup toolsets: ${failures.map((r) => r.message).join("; ")}`
+          );
         }
       }
     } catch (error) {

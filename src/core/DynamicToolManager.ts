@@ -7,6 +7,7 @@ import type {
   ToolSetDefinition,
   ToolingErrorCode,
 } from "../types/index.js";
+import { ToolingError } from "../errors/ToolingError.js";
 import { ModuleResolver } from "../mode/ModuleResolver.js";
 import { ToolRegistry } from "./ToolRegistry.js";
 import type { DynamicToolManagerOptions } from "./core.types.js";
@@ -82,7 +83,7 @@ export class DynamicToolManager {
   public async enableToolset(
     toolsetName: string,
     skipNotification = false
-  ): Promise<{ success: boolean; message: string }> {
+  ): Promise<{ success: boolean; message: string; code?: ToolingErrorCode }> {
     const validation = this.validateToolsetForEnable(toolsetName);
     if ("message" in validation) return validation;
 
@@ -116,6 +117,7 @@ export class DynamicToolManager {
         message: `Failed to enable toolset '${sanitized}': ${
           error instanceof Error ? error.message : "Unknown error"
         }`,
+        code: error instanceof ToolingError ? error.code : "E_INTERNAL",
       };
     }
   }

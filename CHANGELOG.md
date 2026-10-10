@@ -8,7 +8,11 @@ Releases before 0.7.0 are described in [GitHub Releases](https://github.com/code
 
 ### Fixed
 
-- A STATIC client whose startup toolsets fail to load now gets a JSON-RPC error (`-32603`, HTTP 500) on `initialize` instead of connecting with only some of its tools. The failed bundle is dropped, so the client's next `initialize` retries the load. `ServerOrchestrator.isReady()` now returns `false`, and `ensureReady()` throws, when a startup toolset cannot be enabled (name collision, exposure policy, registration error), where it used to report ready.
+- A STATIC client whose startup toolsets fail to load now gets a JSON-RPC error (`-32603`, HTTP 500) on `initialize` instead of connecting with only some of its tools. The failed bundle is dropped, so the client's next `initialize` retries the load.
+
+### Breaking
+
+- `ServerOrchestrator.isReady()` now returns `false`, and `ensureReady()` throws, when registering a startup toolset's tools fails (for example a tool name that another toolset already registered). It used to report ready. As a result `createMcpServer` rejects at startup for such a catalog in STATIC mode, where it used to start with the partial toolset. Fix the catalog (rename or remove the duplicate tool) before upgrading. Toolsets refused before registration (exposure policy, duplicate names in `startup.toolsets`) and module loader errors do not count as failures.
 
 ## [0.7.0]
 

@@ -36,7 +36,7 @@ Provides Fastify-based HTTP transport for the MCP protocol. Handles SSE streams,
    → disconnectServer()      — closes the bundle server's current transport (stale same-client connection)
    → Set transport.onclose BEFORE server.connect() (SDK 1.26+ chain requirement)
    → await bundle.orchestrator.isReady() — STATIC bundles preload tools async; SDK refuses capability registration after connect
-   → not ready → drop the bundle from the cache, respond 500 / JSON-RPC -32603; never connect with partial tools
+   → not ready → drop the bundle from the cache, respond 500 / JSON-RPC -32603; never connect with partial tools (no negative caching: each retry re-runs the module loaders)
    → server.connect(transport) — throws "Already connected" if above steps missed
    → Generate session ID, store in bundle.sessions via onsessioninitialized
 

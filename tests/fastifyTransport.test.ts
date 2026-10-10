@@ -211,7 +211,7 @@ describe("FastifyTransport", () => {
     expect(connect).not.toHaveBeenCalled();
 
     // The failed bundle is dropped, so a retry builds a fresh one
-    await initialize();
+    expect((await initialize()).statusCode).toBe(500);
     expect(createBundle).toHaveBeenCalledTimes(2);
 
     await transport.stop();
