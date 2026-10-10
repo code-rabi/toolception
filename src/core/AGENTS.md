@@ -19,6 +19,7 @@ Central orchestration layer. Manages toolset lifecycle, tool registration, and s
 5. **Toolset added to activeToolsets AFTER registration** — All tools must register successfully before toolset is marked active. Partial failures leave the toolset inactive but orphaned tools remain registered (MCP limitation).
 6. **`enableToolsets()` batches notifications** — Calls `enableToolset(name, skipNotification=true)` per toolset, sends one `tools/list_changed` notification at the end.
 7. **JSON Schema `inputSchema` uses `registerTool` with a passthrough object** — The SDK rejects plain JSON Schema as a tool schema. Zod raw shapes and schemas are passed to `registerTool` as is. Clients see an open object schema for JSON Schema tools, not the declared one.
+8. **Startup failures make the orchestrator not ready** — `enableToolsets()` reports failures in its result and never throws, so `initializeToolsets()` turns any failed result into `initError`. `isReady()` is then `false` and `ensureReady()` throws. Module loader errors are the exception: `ModuleResolver` logs them and continues, so they do not fail a toolset.
 
 ## Enable Toolset Flow
 

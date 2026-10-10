@@ -4,6 +4,12 @@ All notable changes to `toolception` are listed here. Versions follow [semver](h
 
 Releases before 0.7.0 are described in [GitHub Releases](https://github.com/code-rabi/toolception/releases).
 
+## [Unreleased]
+
+### Fixed
+
+- A STATIC client whose startup toolsets fail to load now gets a JSON-RPC error (`-32603`, HTTP 500) on `initialize` instead of connecting with only some of its tools. The failed bundle is dropped, so the client's next `initialize` retries the load. `ServerOrchestrator.isReady()` now returns `false`, and `ensureReady()` throws, when a startup toolset cannot be enabled (name collision, exposure policy, registration error), where it used to report ready.
+
 ## [0.7.0]
 
 ### Breaking

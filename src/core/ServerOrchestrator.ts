@@ -83,10 +83,22 @@ export class ServerOrchestrator {
     initial: string[] | "ALL" | undefined
   ): Promise<void> {
     try {
-      if (initial === "ALL") {
-        await this.manager.enableToolsets(this.resolver.getAvailableToolsets());
-      } else if (Array.isArray(initial) && initial.length > 0) {
-        await this.manager.enableToolsets(initial);
+      const names =
+        initial === "ALL"
+          ? this.resolver.getAvailableToolsets()
+          : Array.isArray(initial)
+            ? initial
+            : [];
+      if (names.length > 0) {
+        // enableToolsets reports failures in its result instead of throwing
+        const { success, results } = await this.manager.enableToolsets(names);
+        if (!success) {
+          const failures = results
+            .filter((r) => !r.success)
+            .map((r) => r.message)
+            .join("; ");
+          throw new Error(`Failed to enable startup toolsets: ${failures}`);
+        }
       }
     } catch (error) {
       this.initError =

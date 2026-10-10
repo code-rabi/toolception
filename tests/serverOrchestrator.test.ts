@@ -102,4 +102,29 @@ describe("ServerOrchestrator", () => {
         })
     ).toThrow(/STATIC mode requires valid toolsets or 'ALL'; none were valid/);
   });
+  it("reports not ready when a startup toolset fails to enable", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { server } = createFakeMcpServer();
+    const orch = new ServerOrchestrator({
+      server,
+      catalog: catalog as any,
+      startup: { mode: "STATIC", toolsets: ["core", "ext"] },
+      exposurePolicy: { denylist: ["ext"] },
+    });
+    expect(await orch.isReady()).toBe(false);
+    await expect(orch.ensureReady()).rejects.toThrow(
+      /Failed to enable startup toolsets: .*ext/
+    );
+    error.mockRestore();
+  });
+
+  it("reports ready when every startup toolset enables", async () => {
+    const { server } = createFakeMcpServer();
+    const orch = new ServerOrchestrator({
+      server,
+      catalog: catalog as any,
+      startup: { mode: "STATIC", toolsets: "ALL" },
+    });
+    expect(await orch.isReady()).toBe(true);
+  });
 });

@@ -17,7 +17,7 @@ Factory functions for creating MCP servers. Provides standard and permission-bas
 2. **Every client gets its own server, in both modes** — The MCP SDK binds one `McpServer` to one transport, so a shared STATIC server made each new client disconnect the previous one. STATIC client orchestrators preload the startup toolsets with the client's merged session context. The base server/orchestrator only serves validation at startup and the `/tools` status endpoint.
 3. **Permission-based servers reject `startup` field** — Throws if `startup` provided. Toolsets come from permissions, not config.
 4. **Permission-based sanitizes exposure policy** — `sanitizeExposurePolicyForPermissions` strips allowlist/denylist/maxActiveToolsets with warnings.
-5. **`ensureReady()` before transport start** — STATIC mode waits for the base toolset initialization to complete (fail-fast). Per-client readiness is awaited by the transport before `connect()`.
+5. **`ensureReady()` before transport start** — STATIC mode waits for the base toolset initialization to complete (fail-fast). Per-client readiness is awaited by the transport before `connect()`; a client whose preload failed gets a JSON-RPC error, not a partially loaded server.
 6. **Orchestrator built via conditional builder calls** — Optional fields (`exposurePolicy`, `startup`) passed to builder only when defined. Never use `!` to coerce.
 
 ## Notifier Pattern
