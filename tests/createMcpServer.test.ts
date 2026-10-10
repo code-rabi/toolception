@@ -53,6 +53,9 @@ function makeFakeServer() {
     tool: (name: string) => {
       calls.push(name);
     },
+    registerTool: (name: string) => {
+      calls.push(name);
+    },
   } as any;
   return { server, calls };
 }
