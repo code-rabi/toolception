@@ -9,6 +9,7 @@ Releases before 0.7.0 are described in [GitHub Releases](https://github.com/code
 ### Breaking
 
 - In STATIC mode every client now gets its own `McpServer` and orchestrator, like DYNAMIC mode. Module loaders run once per client instead of once per process, with each client's merged session context. ([#27](https://github.com/code-rabi/toolception/pull/27))
+  - **Migration:** anything you register on the server returned by `createMcpServer` after it is created (prompts, resources, extra tools) no longer reaches STATIC clients. Register it inside your `createServer` factory instead, so every per-client server gets it.
 
 ### Fixed
 
