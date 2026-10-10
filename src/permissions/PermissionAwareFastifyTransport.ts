@@ -22,6 +22,7 @@ import { registerCustomEndpoints } from "../http/http.utils.js";
 import {
   createOriginGuard,
   normalizeAllowedOrigins,
+  type OriginGuard,
 } from "../http/originValidation.js";
 
 const mcpClientIdSchema = z
@@ -41,7 +42,7 @@ export class PermissionAwareFastifyTransport {
     customEndpoints?: CustomEndpointDefinition[];
   };
   /** Route options for the `/mcp` endpoints; carries the Origin check when configured. */
-  readonly #mcpRouteOptions: { onRequest?: ReturnType<typeof createOriginGuard> };
+  readonly #mcpRouteOptions: { onRequest?: OriginGuard };
   private readonly defaultManager: DynamicToolManager;
   private readonly createPermissionAwareBundle: (
     context: ClientRequestContext
@@ -105,7 +106,7 @@ export class PermissionAwareFastifyTransport {
       cors(value: boolean) { opts.cors = value; return builder; },
       logger(value: boolean) { opts.logger = value; return builder; },
       app(value: FastifyInstance) { opts.app = value; return builder; },
-      allowedOrigins(value: string[]) { opts.allowedOrigins = value; return builder; },
+      allowedOrigins(value: readonly string[]) { opts.allowedOrigins = value; return builder; },
       customEndpoints(value: CustomEndpointDefinition[]) { opts.customEndpoints = value; return builder; },
       configSchema(value: object) { _configSchema = value; return builder; },
       build() { return new PermissionAwareFastifyTransport(_defaultManager, _createPermissionAwareBundle, opts, _configSchema); },

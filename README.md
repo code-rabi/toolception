@@ -968,7 +968,7 @@ Notes
 - `allowedOrigins`: Origins allowed to call `/mcp` (POST, GET, DELETE), e.g. `["https://app.example.com"]`. The MCP spec requires servers to validate `Origin` as a defence against DNS rebinding, so set this on any server that browsers could reach, and in particular on one bound to localhost.
   - Not set (default): no check, as before. Set: a request whose `Origin` is not listed gets `403`.
   - Requests with no `Origin` header (SDK, CLI and server-to-server clients) are always allowed, so non-browser clients keep working. `[]` allows only those.
-  - Entries are compared by scheme, host and port, case-insensitively. An entry that is not an origin (such as `"*"`) throws at startup.
+  - Entries are compared by scheme, host and port, case-insensitively. An entry that is not an origin (such as `"*"`) throws at startup. The request's `Origin` must be a bare origin as browsers send it, so a value with a path, userinfo, query or explicit default port is refused.
   - With `cors` on, only the listed origins also get CORS access; the other endpoints (`/healthz`, `/tools`, custom endpoints) are not Origin-checked.
 - `customEndpoints`: Optional array of custom HTTP endpoints to register alongside MCP protocol endpoints. See [Custom HTTP endpoints](#custom-http-endpoints) for details.
 

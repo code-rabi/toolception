@@ -29,7 +29,7 @@ export interface FastifyTransportOptions {
    * Custom endpoints, `/healthz`, `/tools` and `/.well-known/mcp-config` are
    * not covered.
    */
-  allowedOrigins?: string[];
+  allowedOrigins?: readonly string[];
   /**
    * Optional custom HTTP endpoints to register alongside MCP protocol endpoints.
    * Allows adding REST-like endpoints with Zod validation and type inference.

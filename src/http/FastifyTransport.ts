@@ -23,6 +23,7 @@ import { registerCustomEndpoints } from "./http.utils.js";
 import {
   createOriginGuard,
   normalizeAllowedOrigins,
+  type OriginGuard,
 } from "./originValidation.js";
 
 const mcpClientIdSchema = z
@@ -42,7 +43,7 @@ export class FastifyTransport {
     customEndpoints?: CustomEndpointDefinition[];
   };
   /** Route options for the `/mcp` endpoints; carries the Origin check when configured. */
-  private readonly mcpRouteOptions: { onRequest?: ReturnType<typeof createOriginGuard> };
+  private readonly mcpRouteOptions: { onRequest?: OriginGuard };
   private readonly defaultManager: DynamicToolManager;
   private readonly createBundle: CreateBundleCallback;
   private readonly sessionContextResolver?: SessionContextResolver;
@@ -108,7 +109,7 @@ export class FastifyTransport {
       cors(value: boolean) { opts.cors = value; return builder; },
       logger(value: boolean) { opts.logger = value; return builder; },
       app(value: FastifyInstance) { opts.app = value; return builder; },
-      allowedOrigins(value: string[]) { opts.allowedOrigins = value; return builder; },
+      allowedOrigins(value: readonly string[]) { opts.allowedOrigins = value; return builder; },
       customEndpoints(value: CustomEndpointDefinition[]) { opts.customEndpoints = value; return builder; },
       configSchema(value: object) { _configSchema = value; return builder; },
       sessionContextResolver(value: SessionContextResolver) { _sessionContextResolver = value; return builder; },

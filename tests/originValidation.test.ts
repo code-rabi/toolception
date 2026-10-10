@@ -64,11 +64,21 @@ describe("normalizeAllowedOrigins", () => {
     );
   });
 
-  it("fails transport construction on an invalid entry", () => {
-    expect(
-      () => new FastifyTransport(manager, () => ({} as any), { allowedOrigins: ["*"] })
-    ).toThrow(/Invalid allowedOrigins/);
-  });
+  it.each(["standard", "permission"] as const)(
+    "fails %s transport construction on an invalid entry",
+    (kind) => {
+      const options = { allowedOrigins: ["*"] };
+      const create = () =>
+        kind === "standard"
+          ? new FastifyTransport(manager, () => ({} as any), options)
+          : new PermissionAwareFastifyTransport(
+              manager,
+              async () => ({} as any),
+              options
+            );
+      expect(create).toThrow(/Invalid allowedOrigins/);
+    }
+  );
 });
 
 describe.each(["standard", "permission"] as const)(
@@ -108,11 +118,27 @@ describe.each(["standard", "permission"] as const)(
       const res = await app.inject({
         method,
         url: "/mcp",
-        headers: { origin: "HTTPS://APP.example.com:443" },
+        headers: { origin: "HTTPS://APP.example.com" },
         payload,
       });
       // No mcp-client-id, so the handler answers 400: the guard did not block.
       expect(res.statusCode).toBe(400);
+    });
+
+    it.each([
+      "https://app.example.com/anything",
+      "https://user@app.example.com",
+      "https://app.example.com?x=1",
+      "https://app.example.com:443",
+    ])("rejects the non-canonical Origin %s", async (origin) => {
+      const app = await start([ALLOWED]);
+      const res = await app.inject({
+        method: "POST",
+        url: "/mcp",
+        headers: { origin, "mcp-client-id": "c1" },
+        payload: {},
+      });
+      expect(res.statusCode).toBe(403);
     });
 
     it("allows requests without an Origin header", async () => {

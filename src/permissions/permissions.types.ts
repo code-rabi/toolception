@@ -14,7 +14,7 @@ export interface PermissionAwareFastifyTransportOptions {
    * requests without an `Origin` header are always allowed. See
    * `FastifyTransportOptions.allowedOrigins`.
    */
-  allowedOrigins?: string[];
+  allowedOrigins?: readonly string[];
   /**
    * Optional custom HTTP endpoints to register alongside MCP protocol endpoints.
    * Allows adding REST-like endpoints with Zod validation and type inference.
