@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { createPermissionBasedMcpServer } from "../../src/index.js";
+import { PermissionAwareFastifyTransport } from "../../src/permissions/PermissionAwareFastifyTransport.js";
+import { ServerOrchestrator } from "../../src/core/ServerOrchestrator.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -465,6 +467,75 @@ describe("Permission-based E2E", () => {
       // Default permissions include core
       expect(toolNames).toContain("core.ping");
       expect(toolNames).not.toContain("admin.reset");
+
+      await client.close();
+    });
+  });
+
+  describe("bundles that preload asynchronously", () => {
+    const slowCatalog = {
+      slow: {
+        name: "Slow",
+        description: "Loaded asynchronously",
+        modules: ["slow"],
+      },
+    };
+    let transport: PermissionAwareFastifyTransport;
+    let port: number;
+
+    beforeAll(async () => {
+      port = await getAvailablePort();
+      transport = PermissionAwareFastifyTransport.builder()
+        .defaultManager(
+          ServerOrchestrator.builder()
+            .server(new McpServer({ name: "base", version: "1.0.0" }))
+            .catalog(testCatalog)
+            .build()
+            .getManager()
+        )
+        .createPermissionAwareBundle(async () => {
+          // STATIC startup loads toolsets in the background; the bundle is
+          // returned before they finish, so the transport must wait.
+          const server = new McpServer({ name: "async-bundle", version: "1.0.0" });
+          const orchestrator = ServerOrchestrator.builder()
+            .server(server)
+            .catalog(slowCatalog)
+            .moduleLoaders({
+              slow: async () => {
+                await new Promise((resolve) => setTimeout(resolve, 50));
+                return testCatalog.core.tools!;
+              },
+            })
+            .startup({ mode: "STATIC", toolsets: ["slow"] })
+            .registerMetaTools(false)
+            .build();
+          return {
+            server,
+            orchestrator,
+            allowedToolsets: ["slow"],
+            failedToolsets: [],
+          };
+        })
+        .port(port)
+        .build();
+      await transport.start();
+    });
+
+    afterAll(async () => {
+      await transport.stop();
+    });
+
+    it("lists tools once the bundle finished loading", async () => {
+      const client = new Client({ name: "test", version: "1.0.0" });
+      await client.connect(
+        new StreamableHTTPClientTransport(
+          new URL(`http://localhost:${port}/mcp`),
+          { requestInit: { headers: { "mcp-client-id": "async-client" } } }
+        )
+      );
+
+      const toolNames = extractToolNames(await client.listTools());
+      expect(toolNames).toContain("slow.ping");
 
       await client.close();
     });
