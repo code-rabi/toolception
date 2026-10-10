@@ -522,12 +522,14 @@ describe("Permission-based E2E", () => {
     // so the failed-load rejection of createMcpServer does not apply here.
     it("still connects with the toolsets that registered", async () => {
       const client = await connect("partial-client", "good,dup");
-      expect(extractToolNames(await client.listTools())).toContain("good.ping");
+      const toolNames = extractToolNames(await client.listTools());
+      expect(toolNames).toContain("good.ping");
+      expect(toolNames).not.toContain("dup.ping");
       await client.close();
     });
 
     it("refuses a client whose permitted toolsets all failed", async () => {
-      await expect(connect("all-failed-client", "dup")).rejects.toThrow();
+      await expect(connect("all-failed-client", "dup")).rejects.toThrow(/Access denied/);
     });
   });
 

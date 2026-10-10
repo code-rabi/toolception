@@ -27,7 +27,7 @@ Releases before 0.7.0 are described in [GitHub Releases](https://github.com/code
 
 ### Fixed
 
-- `PermissionAwareFastifyTransport` waits for the client's orchestrator to be ready before connecting and, like `FastifyTransport`, answers `500` / `-32603` and drops the bundle when it is not ready. This hardens bundles that preload toolsets in the background, which only a hand-built `createPermissionAwareBundle` callback can produce; `createPermissionBasedMcpServer` already loaded toolsets before returning, so its behaviour is unchanged. ([#30](https://github.com/code-rabi/toolception/pull/30))
+- `PermissionAwareFastifyTransport` waits for the client's orchestrator to be ready before connecting and, like `FastifyTransport`, answers `500` / `-32603` and drops the bundle when it is not ready. Internal hardening: the class is not part of the public API and `createPermissionBasedMcpServer` already loaded toolsets before returning, so its behaviour is unchanged. ([#30](https://github.com/code-rabi/toolception/pull/30))
 
 ## [0.7.0]
 
