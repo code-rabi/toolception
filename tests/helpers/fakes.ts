@@ -20,13 +20,20 @@ export function createFakeMcpServer(options: { withNotifier?: boolean } = {}) {
       config: { description: string; inputSchema?: any; annotations?: RegisteredTool["annotations"] },
       handler: (args: any) => Promise<any> | any
     ) {
-      tools.push({
+      const entry: RegisteredTool = {
         name,
         description: config.description,
         schema: config.inputSchema,
         annotations: config.annotations,
         handler,
-      });
+      };
+      tools.push(entry);
+      return {
+        remove() {
+          const index = tools.indexOf(entry);
+          if (index !== -1) tools.splice(index, 1);
+        },
+      };
     },
     async connect(_transport: unknown): Promise<void> {},
   };

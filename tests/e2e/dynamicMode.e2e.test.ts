@@ -195,6 +195,15 @@ describe("DYNAMIC mode E2E", () => {
     const core = list.toolsets.find((ts) => ts.key === "core");
     expect(core.active).toBe(false);
 
+    // Disabled tools are no longer listed and can no longer be called
+    expect(extractToolNames(await client.listTools())).not.toContain("core.ping");
+    const staleCall = await client.callTool({
+      name: "core.ping",
+      arguments: {},
+    } as any);
+    expect(staleCall.isError).toBe(true);
+    expect(extractTextContent(staleCall)).toMatch(/not found/i);
+
     await client.close();
   });
 

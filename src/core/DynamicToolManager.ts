@@ -1,4 +1,7 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type {
+  McpServer,
+  RegisteredTool,
+} from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { ZodRawShapeCompat } from "@modelcontextprotocol/sdk/server/zod-compat.js";
 import type {
@@ -21,6 +24,8 @@ export class DynamicToolManager {
   private readonly toolRegistry: ToolRegistry;
 
   private readonly activeToolsets = new Set<string>();
+  /** SDK handles of each toolset's registered tools, used to unregister them. */
+  private readonly toolHandles = new Map<string, readonly RegisteredTool[]>();
 
   constructor(options: DynamicToolManagerOptions) {
     this.server = options.server;
@@ -95,11 +100,8 @@ export class DynamicToolManager {
       return { success: false, message: policyCheck.message };
     }
 
-    // Track tools registered for this enable operation to allow rollback
-    const registeredTools: string[] = [];
-
     try {
-      const toolCount = await this.resolveAndRegisterTools(sanitized, registeredTools);
+      const toolCount = await this.resolveAndRegisterTools(sanitized);
 
       // Track state only after successful registration
       this.activeToolsets.add(sanitized);
@@ -111,7 +113,7 @@ export class DynamicToolManager {
 
       return this.buildEnableResult(sanitized, toolCount);
     } catch (error) {
-      this.handlePartialFailure(sanitized, registeredTools);
+      this.removeToolsetTools(sanitized);
       return {
         success: false,
         message: `Failed to enable toolset '${sanitized}': ${
@@ -148,13 +150,9 @@ export class DynamicToolManager {
 
   /**
    * @param sanitized - The validated toolset name
-   * @param registeredTools - Mutable array tracking registered tool names for rollback
    * @returns The number of tools resolved
    */
-  private async resolveAndRegisterTools(
-    sanitized: string,
-    registeredTools: string[]
-  ): Promise<number> {
+  private async resolveAndRegisterTools(sanitized: string): Promise<number> {
     const resolvedTools = await this.resolver.resolveToolsForToolsets(
       [sanitized],
       this.context
@@ -164,7 +162,6 @@ export class DynamicToolManager {
       const mapped = this.toolRegistry.mapAndValidate(sanitized, resolvedTools);
       for (const tool of mapped) {
         this.registerSingleTool(tool, sanitized);
-        registeredTools.push(tool.name);
       }
     }
 
@@ -187,20 +184,20 @@ export class DynamicToolManager {
   }
 
   /**
-   * @param sanitized - The toolset name that partially failed
-   * @param registeredTools - Tools that were registered before the failure
+   * Unregisters every tool of a toolset from the MCP server and the registry.
+   * Also rolls back a partially failed enable, so no orphaned tools stay callable.
+   *
+   * @param toolsetKey - The toolset whose tools to remove
+   * @returns The number of tools removed
    */
-  private handlePartialFailure(
-    sanitized: string,
-    registeredTools: string[]
-  ): void {
-    if (registeredTools.length > 0) {
-      console.warn(
-        `Partial failure enabling toolset '${sanitized}'. ` +
-          `${registeredTools.length} tools were registered but toolset activation failed. ` +
-          `Tools remain registered due to MCP limitations: ${registeredTools.join(", ")}`
-      );
+  private removeToolsetTools(toolsetKey: string): number {
+    const handles = this.toolHandles.get(toolsetKey) ?? [];
+    for (const handle of handles) {
+      handle.remove();
     }
+    this.toolHandles.delete(toolsetKey);
+    this.toolRegistry.removeForToolset(toolsetKey);
+    return handles.length;
   }
 
   /**
@@ -261,7 +258,7 @@ export class DynamicToolManager {
       ? (tool.inputSchema as ZodRawShapeCompat)
       : z.object({}).passthrough();
 
-    this.server.registerTool(
+    const handle = this.server.registerTool(
       tool.name,
       {
         title: tool.annotations?.title,
@@ -273,6 +270,10 @@ export class DynamicToolManager {
         return await tool.handler(args);
       }
     );
+    this.toolHandles.set(toolsetKey, [
+      ...(this.toolHandles.get(toolsetKey) ?? []),
+      handle,
+    ]);
     this.toolRegistry.addForToolset(toolsetKey, tool.name);
   }
 
@@ -303,14 +304,14 @@ export class DynamicToolManager {
       };
     }
 
-    // State-only disable; no unregistration support in MCP
+    const removedCount = this.removeToolsetTools(sanitized);
     this.activeToolsets.delete(sanitized);
 
     await this.notifyToolsChanged();
 
     return {
       success: true,
-      message: `Toolset '${sanitized}' disabled successfully. Individual tools remain registered due to MCP limitations.`,
+      message: `Toolset '${sanitized}' disabled successfully. Removed ${removedCount} tools.`,
     };
   }
 
