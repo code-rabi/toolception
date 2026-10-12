@@ -83,7 +83,7 @@ export class DynamicToolManager {
    * Enables a single toolset by name.
    * @param toolsetName - The name of the toolset to enable
    * @param skipNotification - If true, skips the tool list change notification
-   * @returns Result object with success status and message; `code` is set only when registering the toolset's tools failed
+   * @returns Result object with success status and message; `code` is set only when enabling threw, normally while registering the toolset's tools
    */
   public async enableToolset(
     toolsetName: string,
@@ -119,7 +119,7 @@ export class DynamicToolManager {
         message: `Failed to enable toolset '${sanitized}': ${
           error instanceof Error ? error.message : "Unknown error"
         }`,
-        // Only this path sets a code; ServerOrchestrator treats it as "failed while registering"
+        // Only this path sets a code; ServerOrchestrator treats it as "enabling threw"
         code: error instanceof ToolingError ? error.code : "E_INTERNAL",
       };
     }
