@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import Fastify from "fastify";
 import { FastifyTransport } from "../src/http/FastifyTransport.js";
 import { DynamicToolManager } from "../src/core/DynamicToolManager.js";
@@ -157,6 +157,62 @@ describe("FastifyTransport", () => {
     });
     expect(res3.statusCode).toBe(404);
     expect(res3.json().error.message).toContain("not found");
+
+    await transport.stop();
+  });
+  it("POST /mcp initialize returns a JSON-RPC error when the client's toolsets failed to load", async () => {
+    const connect = vi.fn(async (_t: any) => {});
+    const server: any = { connect, close: async () => {} };
+    const resolver = new ModuleResolver({
+      catalog: { core: { name: "Core", description: "", tools: [] } } as any,
+    });
+    const manager = new DynamicToolManager({ server, resolver });
+
+    const app = Fastify({ logger: false });
+    const createBundle = vi.fn(() => ({
+      server,
+      orchestrator: { isReady: async () => false } as any,
+    }));
+    const transport = new FastifyTransport(manager, createBundle, {
+      port: 0,
+      logger: false,
+      app,
+    });
+    await transport.start();
+
+    const initialize = () =>
+      app.inject({
+        method: "POST",
+        url: "/mcp",
+        headers: {
+          "mcp-client-id": "failing-client",
+          "content-type": "application/json",
+          accept: "application/json, text/event-stream",
+        },
+        payload: {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "initialize",
+          params: {
+            protocolVersion: "2025-03-26",
+            capabilities: {},
+            clientInfo: { name: "test", version: "1.0.0" },
+          },
+        },
+      });
+
+    const first = await initialize();
+    expect(first.statusCode).toBe(500);
+    expect(first.json()).toEqual({
+      jsonrpc: "2.0",
+      error: { code: -32603, message: "Failed to load toolsets for this client." },
+      id: null,
+    });
+    expect(connect).not.toHaveBeenCalled();
+
+    // The failed bundle is dropped, so a retry builds a fresh one
+    expect((await initialize()).statusCode).toBe(500);
+    expect(createBundle).toHaveBeenCalledTimes(2);
 
     await transport.stop();
   });
