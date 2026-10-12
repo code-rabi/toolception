@@ -18,6 +18,7 @@ Provides per-client access control for toolsets. Supports header-based and confi
 2. **Header lookup is case-insensitive** — Per RFC 7230.
 3. **Fail-secure resolution** — Invalid permissions return empty array, not error. Client gets no toolsets.
 4. **All toolsets fail = throw** — If every requested toolset fails to enable, it's likely a config error. Partial success continues with warning.
+5. **Same Origin check as FastifyTransport** — `allowedOrigins` guards `/mcp` POST/GET/DELETE via the shared `src/http/originValidation.ts`; keep the two transports in step.
 
 ## Resolution Priority (config source)
 

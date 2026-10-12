@@ -20,6 +20,11 @@ import type {
   CustomEndpointDefinition,
 } from "./http.types.js";
 import { registerCustomEndpoints } from "./http.utils.js";
+import {
+  createOriginGuard,
+  normalizeAllowedOrigins,
+  type OriginGuard,
+} from "./originValidation.js";
 
 const mcpClientIdSchema = z
   .string({ message: "Missing required mcp-client-id header" })
@@ -34,8 +39,11 @@ export class FastifyTransport {
     cors: boolean;
     logger: boolean;
     app?: FastifyInstance;
+    allowedOrigins?: string[];
     customEndpoints?: CustomEndpointDefinition[];
   };
+  /** Route options for the `/mcp` endpoints; carries the Origin check when configured. */
+  private readonly mcpRouteOptions: { onRequest?: OriginGuard };
   private readonly defaultManager: DynamicToolManager;
   private readonly createBundle: CreateBundleCallback;
   private readonly sessionContextResolver?: SessionContextResolver;
@@ -74,8 +82,14 @@ export class FastifyTransport {
       cors: options.cors ?? true,
       logger: options.logger ?? false,
       app: options.app,
+      allowedOrigins: options.allowedOrigins
+        ? normalizeAllowedOrigins(options.allowedOrigins)
+        : undefined,
       customEndpoints: options.customEndpoints,
     };
+    this.mcpRouteOptions = this.options.allowedOrigins
+      ? { onRequest: createOriginGuard(this.options.allowedOrigins) }
+      : {};
     this.configSchema = configSchema;
   }
 
@@ -95,6 +109,7 @@ export class FastifyTransport {
       cors(value: boolean) { opts.cors = value; return builder; },
       logger(value: boolean) { opts.logger = value; return builder; },
       app(value: FastifyInstance) { opts.app = value; return builder; },
+      allowedOrigins(value: readonly string[]) { opts.allowedOrigins = value; return builder; },
       customEndpoints(value: CustomEndpointDefinition[]) { opts.customEndpoints = value; return builder; },
       configSchema(value: object) { _configSchema = value; return builder; },
       sessionContextResolver(value: SessionContextResolver) { _sessionContextResolver = value; return builder; },
@@ -108,7 +123,7 @@ export class FastifyTransport {
     if (this.app) return;
     const app = this.options.app ?? Fastify({ logger: this.options.logger });
     if (this.options.cors) {
-      await app.register(cors, { origin: true });
+      await app.register(cors, { origin: this.options.allowedOrigins ?? true });
     }
 
     const base = this.normalizeBasePath(this.options.basePath);
@@ -184,6 +199,7 @@ export class FastifyTransport {
   private registerMcpPostEndpoint(app: FastifyInstance, base: string): void {
     app.post(
       `${base}/mcp`,
+      this.mcpRouteOptions,
       async (req: FastifyRequest, reply: FastifyReply) => {
         const parseResult = mcpClientIdSchema.safeParse(
           req.headers["mcp-client-id"]
@@ -272,7 +288,7 @@ export class FastifyTransport {
    * @param base - Base path for routes
    */
   private registerMcpGetEndpoint(app: FastifyInstance, base: string): void {
-    app.get(`${base}/mcp`, async (req: FastifyRequest, reply: FastifyReply) => {
+    app.get(`${base}/mcp`, this.mcpRouteOptions, async (req: FastifyRequest, reply: FastifyReply) => {
       const clientIdHeader = (
         req.headers["mcp-client-id"] as string | undefined
       )?.trim();
@@ -310,6 +326,7 @@ export class FastifyTransport {
   private registerMcpDeleteEndpoint(app: FastifyInstance, base: string): void {
     app.delete(
       `${base}/mcp`,
+      this.mcpRouteOptions,
       async (req: FastifyRequest, reply: FastifyReply) => {
         const clientIdHeader = (
           req.headers["mcp-client-id"] as string | undefined
