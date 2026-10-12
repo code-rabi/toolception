@@ -49,6 +49,7 @@ HTTP Request with mcp-client-id header
   → PermissionResolver.resolve(clientId, headers)
   → Create STATIC mode server with allowed toolsets only
   → Return bundle (cached for reuse)
+  → On initialize: await bundle.orchestrator.isReady() before server.connect() — the SDK refuses capability registration after connect
 ```
 
 ## Anti-patterns
