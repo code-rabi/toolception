@@ -6,6 +6,11 @@ Releases before 0.7.0 are described in [GitHub Releases](https://github.com/code
 
 ## [Unreleased]
 
+### Added
+
+- `http.allowedOrigins` validates the `Origin` header on the `/mcp` endpoints, as the MCP spec requires. A request with an `Origin` outside the list gets `403`; requests without an `Origin` header are always allowed. When `cors` is on, only the listed origins get CORS access. Not set by default, so existing deployments behave as before.
+  - **Migration:** none needed. To turn it on, pass `http: { allowedOrigins: ["https://app.example.com"] }`.
+
 ### Fixed
 
 - A STATIC client whose startup toolsets fail to load now gets a JSON-RPC error (`-32603`, HTTP 500) on `initialize` instead of connecting with only some of its tools. The failed bundle is dropped, so the client's next `initialize` retries the load.
