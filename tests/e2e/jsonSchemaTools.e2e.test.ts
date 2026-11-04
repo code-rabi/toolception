@@ -55,12 +55,35 @@ describe("JSON Schema tool definitions E2E", () => {
     const price = tools.tools.find((t) => t.name === "quotes.price");
     expect(price).toBeDefined();
     expect(price?.annotations).toEqual({ readOnlyHint: true });
+    expect(price?.inputSchema).toMatchObject({
+      type: "object",
+      properties: { symbol: { type: "string" } },
+      required: ["symbol"],
+    });
 
     const result = await client.callTool({
       name: "quotes.price",
       arguments: { symbol: "AAPL" },
     });
     expect(extractTextContent(result)).toBe("AAPL: 123.45");
+
+    await client.close();
+  });
+
+  it("rejects arguments that break the schema, for that call only", async () => {
+    const transport = new StreamableHTTPClientTransport(
+      new URL(`http://localhost:${port}/mcp`),
+      { requestInit: { headers: { "mcp-client-id": "json-schema-invalid-client" } } }
+    );
+    const client = new Client({ name: "test", version: "1.0.0" });
+    await client.connect(transport);
+
+    const bad = await client.callTool({ name: "quotes.price", arguments: { symbol: 42 } });
+    expect(bad.isError).toBe(true);
+    expect(extractTextContent(bad)).toMatch(/invalid|validation/i);
+
+    const good = await client.callTool({ name: "quotes.price", arguments: { symbol: "MSFT" } });
+    expect(extractTextContent(good)).toBe("MSFT: 123.45");
 
     await client.close();
   });

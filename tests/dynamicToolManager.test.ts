@@ -322,7 +322,7 @@ describe("DynamicToolManager with a real McpServer", () => {
     expect((res.content as any)[0].text).toBe("AAPL");
   });
 
-  it("registers a plain JSON Schema inputSchema as a passthrough object", async () => {
+  it("registers a plain JSON Schema inputSchema and hands valid arguments to the handler", async () => {
     const { result, client } = await connect([
       {
         name: "price",
@@ -411,6 +411,154 @@ describe("DynamicToolManager input schema handling (Zod 4)", () => {
     const { result } = await enable({ _def: { typeName: "ZodObject" } });
     expect(result.success).toBe(false);
     expect(result.code).toBe("E_VALIDATION");
+  });
+});
+
+describe("DynamicToolManager JSON Schema inputSchema", () => {
+  const symbolSchema = {
+    type: "object",
+    properties: { symbol: { type: "string" }, limit: { type: "integer", minimum: 1 } },
+    required: ["symbol"],
+    additionalProperties: false,
+  };
+
+  function managerFor(inputSchema: unknown, handler = vi.fn(async (args: any) => ({
+    content: [{ type: "text", text: String(args.symbol ?? "none") }],
+  }))) {
+    const server = new McpServer({ name: "t", version: "1.0.0" });
+    const resolver = new ModuleResolver({
+      catalog: {
+        core: {
+          name: "Core",
+          description: "",
+          tools: [{ name: "price", description: "Price", inputSchema, handler }],
+        },
+      } as any,
+    });
+    const manager = new DynamicToolManager({
+      server,
+      resolver,
+      toolRegistry: new ToolRegistry({ namespaceWithToolset: false }),
+    });
+    return { server, manager, handler };
+  }
+
+  async function connectClient(server: McpServer) {
+    const [serverSide, clientSide] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverSide);
+    const client = new Client({ name: "c", version: "1.0.0" });
+    await client.connect(clientSide);
+    return client;
+  }
+
+  it("advertises the declared properties and required list", async () => {
+    const { server, manager } = managerFor(symbolSchema);
+    expect((await manager.enableToolset("core")).success).toBe(true);
+    const client = await connectClient(server);
+    const { tools } = await client.listTools();
+    expect(tools[0].inputSchema).toMatchObject({
+      type: "object",
+      properties: { symbol: { type: "string" }, limit: { type: "integer", minimum: 1 } },
+      required: ["symbol"],
+      additionalProperties: false,
+    });
+  });
+
+  it.each([
+    ["a missing required property", {}],
+    ["a wrong type", { symbol: 42 }],
+    ["a violated constraint", { symbol: "AAPL", limit: 0 }],
+    ["an extra property the schema forbids", { symbol: "AAPL", extra: true }],
+  ])("rejects %s without calling the handler", async (_label, args) => {
+    const { server, manager, handler } = managerFor(symbolSchema);
+    await manager.enableToolset("core");
+    const client = await connectClient(server);
+    const res = await client.callTool({ name: "price", arguments: args });
+    expect(res.isError).toBe(true);
+    expect((res.content as any)[0].text).toMatch(/invalid|validation/i);
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("passes valid arguments through unchanged", async () => {
+    const { server, manager, handler } = managerFor(symbolSchema);
+    await manager.enableToolset("core");
+    const client = await connectClient(server);
+    const res = await client.callTool({
+      name: "price",
+      arguments: { symbol: "AAPL", limit: 3 },
+    });
+    expect(res.isError).toBeFalsy();
+    expect(handler).toHaveBeenCalledWith({ symbol: "AAPL", limit: 3 });
+  });
+
+  it("registers a tool without an inputSchema as an open object", async () => {
+    const { server, manager } = managerFor(undefined);
+    expect((await manager.enableToolset("core")).success).toBe(true);
+    const client = await connectClient(server);
+    const res = await client.callTool({ name: "price", arguments: { symbol: "X" } });
+    expect((res.content as any)[0].text).toBe("X");
+  });
+
+  it.each([
+    ["an unknown type name", { type: "object", properties: { a: { type: "strng" } } }],
+    ["an unresolved $ref", { type: "object", properties: { a: { $ref: "#/$defs/missing" } } }],
+    ["an unsupported $schema dialect", { $schema: "http://example.com/other", type: "object" }],
+  ])("fails the enable with E_VALIDATION on %s, and registers nothing", async (_label, schema) => {
+    const { server, manager } = managerFor(schema);
+    const result = await manager.enableToolset("core");
+    expect(result.success).toBe(false);
+    expect(result.code).toBe("E_VALIDATION");
+    expect(result.message).toMatch(/Tool 'price' has an invalid JSON Schema inputSchema/);
+    expect(manager.isActive("core")).toBe(false);
+    const client = await connectClient(server);
+    expect((await client.listTools()).tools).toEqual([]);
+  });
+
+  it.each([
+    ["a JSON Schema whose root is not an object", { type: "string" }],
+    ["a JSON Schema without a root type", { properties: { a: { type: "string" } } }],
+    ["a shape that mixes Zod and non-Zod values", { a: z.string(), b: 5 }],
+  ])("fails the enable with E_VALIDATION on %s", async (_label, schema) => {
+    const { manager } = managerFor(schema);
+    const result = await manager.enableToolset("core");
+    expect(result.success).toBe(false);
+    expect(result.code).toBe("E_VALIDATION");
+    expect(result.message).toMatch(/neither a Zod 4 shape nor a JSON Schema object/);
+  });
+
+  it("keeps validators apart per manager: the same $id with different schemas never crosses over", async () => {
+    const schemaFor = (type: "string" | "number") => ({
+      $id: "https://example.com/price-args",
+      type: "object",
+      properties: { value: { type }, },
+      required: ["value"],
+    });
+    const a = managerFor(schemaFor("string"));
+    const b = managerFor(schemaFor("number"));
+    await a.manager.enableToolset("core");
+    await b.manager.enableToolset("core");
+    const clientA = await connectClient(a.server);
+    const clientB = await connectClient(b.server);
+
+    const aString = await clientA.callTool({ name: "price", arguments: { value: "x" } });
+    const aNumber = await clientA.callTool({ name: "price", arguments: { value: 1 } });
+    const bString = await clientB.callTool({ name: "price", arguments: { value: "x" } });
+    const bNumber = await clientB.callTool({ name: "price", arguments: { value: 1 } });
+
+    expect(aString.isError).toBeFalsy();
+    expect(aNumber.isError).toBe(true);
+    expect(bString.isError).toBe(true);
+    expect(bNumber.isError).toBeFalsy();
+  });
+
+  it("re-enables a JSON Schema toolset with a $id after disabling it", async () => {
+    const { server, manager } = managerFor({ ...symbolSchema, $id: "https://example.com/symbol" });
+    expect((await manager.enableToolset("core")).success).toBe(true);
+    expect((await manager.disableToolset("core")).success).toBe(true);
+    expect((await manager.enableToolset("core")).success).toBe(true);
+    const client = await connectClient(server);
+    const res = await client.callTool({ name: "price", arguments: { symbol: "AAPL" } });
+    expect(res.isError).toBeFalsy();
   });
 });
 

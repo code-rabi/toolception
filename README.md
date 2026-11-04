@@ -100,7 +100,7 @@ const catalog = {
 
 ### Step 4: Define a tool
 
-`inputSchema` should be a Zod 4 raw shape (or a Zod 4 object schema); toolception wraps a raw shape with `z.object()` before it calls `McpServer.registerTool`. A Zod 3 schema fails to enable its toolset with an `E_VALIDATION` error. A plain JSON Schema object still works, but clients see an open object schema and arguments reach the handler unvalidated.
+`inputSchema` should be a Zod 4 raw shape (or a Zod 4 object schema); toolception wraps a raw shape with `z.object()` before it calls `McpServer.registerTool`. A Zod 3 schema fails to enable its toolset with an `E_VALIDATION` error. A plain JSON Schema object (`type: "object"`) also works: toolception registers it with the SDK's `fromJsonSchema()`, so clients see its properties and arguments are validated against it before your handler runs. A JSON Schema that does not compile (unknown type name, unresolved `$ref`, unsupported `$schema` dialect) fails the toolset's enable with an `E_VALIDATION` error that names the tool.
 
 ```ts
 import { z } from "zod";

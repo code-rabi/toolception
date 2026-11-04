@@ -1,4 +1,12 @@
-import type { McpServer, RegisteredTool } from "@modelcontextprotocol/server";
+import {
+  fromJsonSchema,
+  type JsonSchemaType,
+  type McpServer,
+  type RegisteredTool,
+  type StandardSchemaWithJSON,
+  type jsonSchemaValidator,
+} from "@modelcontextprotocol/server";
+import { AjvJsonSchemaValidator } from "@modelcontextprotocol/server/validators/ajv";
 import { z } from "zod";
 import type {
   ExposurePolicy,
@@ -22,6 +30,13 @@ export class DynamicToolManager {
   private readonly activeToolsets = new Set<string>();
   /** SDK handles of each toolset's registered tools, used to unregister them. */
   private readonly toolHandles = new Map<string, readonly RegisteredTool[]>();
+  /**
+   * Validator for JSON Schema tools, created on first use. It is deliberately
+   * per manager (so per client): the SDK's shared default validator caches
+   * compiled schemas by `$id` and by object for the life of the process, which
+   * would let one client's schema answer for another's and grow with every client.
+   */
+  private jsonSchemaValidator?: jsonSchemaValidator;
 
   constructor(options: DynamicToolManagerOptions) {
     this.server = options.server;
@@ -247,7 +262,11 @@ export class DynamicToolManager {
     const hasAnnotations =
       tool.annotations && Object.keys(tool.annotations).length > 0;
 
-    const inputSchema = toRegistrableInputSchema(tool.name, tool.inputSchema);
+    const inputSchema = toRegistrableInputSchema(
+      tool.name,
+      tool.inputSchema,
+      () => (this.jsonSchemaValidator ??= new AjvJsonSchemaValidator())
+    );
 
     const handle = this.server.registerTool(
       tool.name,
@@ -389,7 +408,10 @@ export class DynamicToolManager {
 }
 
 /** The schema type handed to `registerTool`; arguments arrive as a plain record. */
-type InputSchema = z.ZodType<Record<string, unknown>>;
+type InputSchema = StandardSchemaWithJSON<
+  Record<string, unknown>,
+  Record<string, unknown>
+>;
 
 /**
  * @param value - Any value
@@ -413,26 +435,34 @@ function isZod3Type(value: unknown): boolean {
 }
 
 /**
- * Turns a tool's `inputSchema` into the Zod 4 object schema that
- * `McpServer.registerTool` expects.
+ * Turns a tool's `inputSchema` into the schema that `McpServer.registerTool`
+ * expects.
  *
  * - A Zod 4 schema instance is used as is.
  * - A raw shape of Zod 4 schemas (an empty object counts as an empty shape) is
  *   wrapped with toolception's own `z.object()`, so the SDK never wraps it with
  *   a second copy of Zod.
- * - Anything else is treated as plain JSON Schema and registers as an open
- *   object, so arguments still reach the handler.
+ * - A plain JSON Schema object (`type: "object"`) goes through the SDK's
+ *   `fromJsonSchema()`: clients see its real properties and arguments are
+ *   validated against it before the handler runs.
+ * - A missing schema registers as an open object, so arguments still reach the handler.
  *
- * @param toolName - The tool name, used in the error message
+ * @param toolName - The tool name, used in error messages
  * @param schema - The tool's inputSchema
+ * @param getValidator - Supplies the JSON Schema validator; called only for JSON Schema tools
  * @returns A schema to pass to `registerTool`
- * @throws ToolingError `E_VALIDATION` when the schema or a shape value is a Zod 3 schema
+ * @throws ToolingError `E_VALIDATION` when the schema or a shape value is a Zod 3 schema,
+ *   when the schema is neither a Zod 4 shape nor a JSON Schema object, or when the JSON
+ *   Schema cannot be compiled (bad keyword, unresolved `$ref`, unsupported dialect)
  */
 function toRegistrableInputSchema(
   toolName: string,
-  schema: unknown
+  schema: unknown,
+  getValidator: () => jsonSchemaValidator
 ): InputSchema {
-  if (typeof schema !== "object" || schema === null) return z.looseObject({});
+  if (typeof schema !== "object" || schema === null) {
+    return z.looseObject({}) as InputSchema;
+  }
   const values = isZod4Type(schema) || isZod3Type(schema)
     ? [schema]
     : Object.values(schema);
@@ -448,5 +478,23 @@ function toRegistrableInputSchema(
   if (values.every(isZod4Type)) {
     return z.object(schema as Record<string, z.ZodType>) as InputSchema;
   }
-  return z.looseObject({});
+  if ((schema as { type?: unknown }).type !== "object") {
+    throw new ToolingError(
+      `Tool '${toolName}' has an inputSchema that is neither a Zod 4 shape nor a JSON Schema object (type: "object").`,
+      "E_VALIDATION"
+    );
+  }
+  try {
+    return fromJsonSchema<Record<string, unknown>>(
+      schema as JsonSchemaType,
+      getValidator()
+    );
+  } catch (error) {
+    throw new ToolingError(
+      `Tool '${toolName}' has an invalid JSON Schema inputSchema: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+      "E_VALIDATION"
+    );
+  }
 }

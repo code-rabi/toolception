@@ -14,6 +14,10 @@ Releases before 0.7.0 are described in [GitHub Releases](https://github.com/code
   - `createServer` factories must return a v2 `McpServer`; the removed `server.tool()`, `server.prompt()` and `server.resource()` are replaced by `registerTool`, `registerPrompt` and `registerResource`.
 - Calling a tool the server no longer lists (for example a disabled toolset's tool) is now answered with a JSON-RPC error ("Tool ... not found") instead of a result with `isError: true`. This is SDK v2 behaviour.
 - `FastifyTransport` and `PermissionAwareFastifyTransport` use `NodeStreamableHTTPServerTransport` from `@modelcontextprotocol/node`. Session handling, the per-client `mcp-client-id` model and the HTTP endpoints are unchanged: each client still gets its own server, transport and enabled/disabled toolset state.
+- A tool whose `inputSchema` is a plain JSON Schema object (`type: "object"`) is now registered with the SDK's `fromJsonSchema()`: clients see its real properties and arguments are validated against it before your handler runs. Until now such a tool registered as an open object, so its parameters were not advertised and any arguments reached the handler. Invalid arguments now get an error result and the handler is not called.
+  - **Migration:** if a handler relied on receiving arguments its schema forbids (a missing `required` property, a wrong type, or extra properties under `additionalProperties: false`), loosen the schema or fix the caller.
+  - A JSON Schema that cannot be compiled (unknown type name, unresolved `$ref`, unsupported `$schema` dialect) now fails the toolset's enable with an `E_VALIDATION` error that names the tool, instead of failing at `tools/list`. So does an `inputSchema` that is neither a Zod 4 shape nor a JSON Schema object (no root `type: "object"`, or a shape that mixes Zod and non-Zod values), which used to register as an open object.
+  - Each client's `DynamicToolManager` compiles JSON Schemas with its own validator, so one client's schema never answers for another's, even when both declare the same `$id`.
 
 ### Fixed
 
