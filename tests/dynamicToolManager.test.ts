@@ -525,6 +525,7 @@ describe("DynamicToolManager JSON Schema inputSchema", () => {
     ["a JSON Schema whose root is not an object", { type: "string" }],
     ["a JSON Schema without a root type", { properties: { a: { type: "string" } } }],
     ["a shape that mixes Zod and non-Zod values", { a: z.string(), b: 5 }],
+    ["a root type array", { type: ["object", "null"] }],
   ])("fails the enable with E_VALIDATION on %s", async (_label, schema) => {
     const { manager } = managerFor(schema);
     const result = await manager.enableToolset("core");
@@ -533,7 +534,7 @@ describe("DynamicToolManager JSON Schema inputSchema", () => {
     expect(result.message).toMatch(/neither a Zod 4 shape nor a JSON Schema object/);
   });
 
-  it("validates each manager's client against its own schema, even for identical nested $id values", async () => {
+  it("validates two managers against their own schemas, even for identical nested $id values", async () => {
     const schemaFor = (type: "string" | "number") => ({
       type: "object",
       properties: { value: { $ref: "#/$defs/value" } },
@@ -627,6 +628,20 @@ describe("DynamicToolManager JSON Schema inputSchema", () => {
     expect(manager.isActive("core")).toBe(false);
     const client = await connectClient(server);
     expect((await client.listTools()).tools).toEqual([]);
+  });
+
+  it("resolves absolute $refs to a nested $id while the root $id is dropped", async () => {
+    const { server, manager } = managerFor({
+      $id: "https://example.com/root",
+      type: "object",
+      properties: { symbol: { $ref: "https://example.com/symbol" } },
+      required: ["symbol"],
+      $defs: { symbol: { $id: "https://example.com/symbol", type: "string" } },
+    });
+    expect((await manager.enableToolset("core")).success).toBe(true);
+    const client = await connectClient(server);
+    expect((await client.callTool({ name: "price", arguments: { symbol: "AAPL" } })).isError).toBeFalsy();
+    expect((await client.callTool({ name: "price", arguments: { symbol: 1 } })).isError).toBe(true);
   });
 
   it("re-enables a JSON Schema toolset with a $id after disabling it", async () => {

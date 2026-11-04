@@ -450,8 +450,8 @@ function isZod3Type(value: unknown): boolean {
  *   `fromJsonSchema()`: clients see its real properties and arguments are
  *   validated against it before the handler runs.
  *   The root `$id` is dropped before compiling (so it is not advertised either): the
- *   validator caches compiled schemas by `$id`, which would give two tools with the same
- *   `$id` the first tool's validator. Reference the root with `#` instead of its `$id` URL.
+ *   validator caches compiled schemas by `$id`, which would give two tools with the
+ *   same `$id` the first tool's validator. Reference the root with `#`, not its URL.
  * - A missing or non-object schema registers as an open object, so arguments still
  *   reach the handler.
  *
@@ -492,8 +492,13 @@ function toRegistrableInputSchema(
       "E_VALIDATION"
     );
   }
-  const compilable: JsonSchemaType = { ...(schema as JsonSchemaType) };
-  delete compilable.$id;
+  // Copy only when there is a root `$id` to drop: Ajv caches by object identity,
+  // so passing the caller's own object lets a re-enable reuse the compiled schema.
+  let compilable = schema as JsonSchemaType;
+  if (typeof compilable.$id === "string") {
+    compilable = { ...compilable };
+    delete compilable.$id;
+  }
   try {
     return fromJsonSchema<Record<string, unknown>>(compilable, validator);
   } catch (error) {

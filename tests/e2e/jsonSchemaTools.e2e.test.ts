@@ -80,7 +80,7 @@ describe("JSON Schema tool definitions E2E", () => {
 
     const bad = await client.callTool({ name: "quotes.price", arguments: { symbol: 42 } });
     expect(bad.isError).toBe(true);
-    expect(extractTextContent(bad)).toMatch(/invalid|validation/i);
+    expect(extractTextContent(bad)).toMatch(/Input validation error/);
 
     const good = await client.callTool({ name: "quotes.price", arguments: { symbol: "MSFT" } });
     expect(extractTextContent(good)).toBe("MSFT: 123.45");
@@ -92,7 +92,7 @@ describe("JSON Schema tool definitions E2E", () => {
 describe("JSON Schema tools with concurrent clients E2E", () => {
   let server: Awaited<ReturnType<typeof createMcpServer>>;
   let port: number;
-  /** Same root and nested `$id`, different types: each client must be validated by its own toolset. */
+  /** Same root and nested `$id`, different types: each client is validated by its own toolset. */
   const schemaFor = (type: "string" | "number") => ({
     $id: "https://example.com/args",
     type: "object",
@@ -145,7 +145,7 @@ describe("JSON Schema tools with concurrent clients E2E", () => {
       await client.callTool({ name: "enable_toolset", arguments: { name } } as any)
     );
 
-  it("keeps each client's toolsets and validators apart", async () => {
+  it("keeps each client's toolsets and validation apart", async () => {
     const a = await connect("json-schema-a");
     const b = await connect("json-schema-b");
     expect((await enable(a, "texts")).success).toBe(true);
