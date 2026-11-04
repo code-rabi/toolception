@@ -493,7 +493,8 @@ function toRegistrableInputSchema(
     );
   }
   // Copy only when there is a root `$id` to drop: Ajv caches by object identity,
-  // so passing the caller's own object lets a re-enable reuse the compiled schema.
+  // so a schema without one is passed as is and a re-enable reuses its compiled
+  // form. A copy is a new cache key, bounded by the client's lifetime.
   let compilable = schema as JsonSchemaType;
   if (typeof compilable.$id === "string") {
     compilable = { ...compilable };
