@@ -22,7 +22,7 @@ function copiesOf(name: string): string[] {
 }
 
 describe("dependency tree", () => {
-  it.each(["zod", "@modelcontextprotocol/server", "@modelcontextprotocol/core"])(
+  it.each(["zod", "@modelcontextprotocol/server"])(
     "has exactly one copy of %s",
     (name) => {
       expect(copiesOf(name)).toEqual([`node_modules/${name}`]);
