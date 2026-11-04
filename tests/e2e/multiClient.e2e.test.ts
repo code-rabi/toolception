@@ -149,6 +149,9 @@ describe("multiple concurrent clients keep their own toolset state", () => {
     it("sends tools/list_changed only to the client whose state changed", async () => {
       const a = await connect(port, "multi-a3");
       const b = await connect(port, "multi-b3");
+      // A round trip on each client first, so both standalone SSE streams are open.
+      await toolNames(a);
+      await toolNames(b);
       const bBefore = b.listChangedCount();
       const aBefore = a.listChangedCount();
 
