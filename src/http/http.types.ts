@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import type { ServerOrchestrator } from "../core/ServerOrchestrator.js";
 import type { SessionContextResolver } from "../session/SessionContextResolver.js";
 

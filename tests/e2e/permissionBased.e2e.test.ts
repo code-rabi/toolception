@@ -2,9 +2,8 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { createPermissionBasedMcpServer } from "../../src/index.js";
 import { PermissionAwareFastifyTransport } from "../../src/permissions/PermissionAwareFastifyTransport.js";
 import { ServerOrchestrator } from "../../src/core/ServerOrchestrator.js";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
+import { McpServer } from "@modelcontextprotocol/server";
 import {
   getAvailablePort,
   testCatalog,

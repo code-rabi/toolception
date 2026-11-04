@@ -1,8 +1,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import Fastify from "fastify";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
+import { McpServer } from "@modelcontextprotocol/server";
 import { FastifyTransport } from "../src/http/FastifyTransport.js";
 import { PermissionAwareFastifyTransport } from "../src/permissions/PermissionAwareFastifyTransport.js";
 import { createMcpServer, createPermissionBasedMcpServer } from "../src/index.js";

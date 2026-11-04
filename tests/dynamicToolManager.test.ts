@@ -1,8 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { z } from "zod";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { Client } from "@modelcontextprotocol/client";
+import { McpServer, InMemoryTransport } from "@modelcontextprotocol/server";
 import { DynamicToolManager } from "../src/core/DynamicToolManager.js";
 import { ModuleResolver } from "../src/mode/ModuleResolver.js";
 import { ToolRegistry } from "../src/core/ToolRegistry.js";
@@ -341,6 +340,80 @@ describe("DynamicToolManager with a real McpServer", () => {
   });
 });
 
+describe("DynamicToolManager input schema handling (Zod 4)", () => {
+  async function enable(inputSchema: unknown) {
+    const server = new McpServer({ name: "t", version: "1.0.0" });
+    const resolver = new ModuleResolver({
+      catalog: {
+        core: {
+          name: "Core",
+          description: "",
+          tools: [
+            {
+              name: "echo",
+              description: "Echo",
+              inputSchema,
+              handler: async (args: { text?: string }) => ({
+                content: [{ type: "text", text: args.text ?? "none" }],
+              }),
+            },
+          ],
+        },
+      } as any,
+    });
+    const manager = new DynamicToolManager({
+      server,
+      resolver,
+      toolRegistry: new ToolRegistry({ namespaceWithToolset: false }),
+    });
+    const result = await manager.enableToolset("core");
+    const [serverSide, clientSide] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverSide);
+    const client = new Client({ name: "c", version: "1.0.0" });
+    await client.connect(clientSide);
+    return { result, client };
+  }
+
+  it("uses a Zod 4 object schema instance as is", async () => {
+    const { result, client } = await enable(z.object({ text: z.string() }));
+    expect(result.success).toBe(true);
+    const { tools } = await client.listTools();
+    expect(tools[0].inputSchema.properties).toHaveProperty("text");
+    const res = await client.callTool({ name: "echo", arguments: { text: "hi" } });
+    expect((res.content as any)[0].text).toBe("hi");
+  });
+
+  it("validates arguments against a Zod 4 raw shape", async () => {
+    const { client } = await enable({ text: z.string() });
+    const res = await client.callTool({ name: "echo", arguments: { text: 42 } });
+    expect(res.isError).toBe(true);
+    expect((res.content as any)[0].text).toMatch(/invalid|validation/i);
+  });
+
+  it("registers an empty shape as a tool without arguments", async () => {
+    const { result, client } = await enable({});
+    expect(result.success).toBe(true);
+    const res = await client.callTool({ name: "echo", arguments: {} });
+    expect((res.content as any)[0].text).toBe("none");
+  });
+
+  it("refuses a Zod 3 schema with a clear error, and registers nothing", async () => {
+    // A Zod 3 type has `_def` but no `_zod`.
+    const zod3Like = { _def: { typeName: "ZodString" }, parse: () => "" };
+    const { result, client } = await enable({ text: zod3Like });
+    expect(result.success).toBe(false);
+    expect(result.code).toBe("E_VALIDATION");
+    expect(result.message).toMatch(/Tool 'echo' uses a Zod 3 schema.*Zod 4/);
+    expect((await client.listTools()).tools).toEqual([]);
+  });
+
+  it("refuses a Zod 3 schema instance as the whole inputSchema", async () => {
+    const { result } = await enable({ _def: { typeName: "ZodObject" } });
+    expect(result.success).toBe(false);
+    expect(result.code).toBe("E_VALIDATION");
+  });
+});
+
 describe("DynamicToolManager disable removes tools", () => {
   const ping = {
     name: "ping",
@@ -356,7 +429,7 @@ describe("DynamicToolManager disable removes tools", () => {
       { name: "t", version: "1.0.0" },
       { capabilities: { tools: { listChanged: true } } }
     );
-    server.registerTool("meta", { inputSchema: {} }, async () => ({ content: [] }));
+    server.registerTool("meta", { inputSchema: z.object({}) }, async () => ({ content: [] }));
     return server;
   }
 
@@ -387,9 +460,10 @@ describe("DynamicToolManager disable removes tools", () => {
     expect(res.message).toContain("Removed 1 tools");
     expect(await listedNames(client)).toEqual(["meta"]);
 
-    const call = await client.callTool({ name: "core.ping", arguments: {} });
-    expect(call.isError).toBe(true);
-    expect((call.content as any)[0].text).toMatch(/not found/i);
+    // SDK v2 answers an unknown tool with a JSON-RPC error, not an `isError` result
+    await expect(
+      client.callTool({ name: "core.ping", arguments: {} })
+    ).rejects.toThrow(/not found/i);
   });
 
   it("frees the tool names so the toolset can be enabled again", async () => {

@@ -18,7 +18,7 @@ Central orchestration layer. Manages toolset lifecycle, tool registration, and s
 4. **Namespacing applied BEFORE collision check** — `mapAndValidate()` generates safe names first, then checks for conflicts.
 5. **Toolset added to activeToolsets AFTER registration** — All tools must register successfully before toolset is marked active. A partial failure removes the tools already registered, so nothing is left callable and the toolset can be enabled again.
 6. **`enableToolsets()` batches notifications** — Calls `enableToolset(name, skipNotification=true)` per toolset, sends one `tools/list_changed` notification at the end. The SDK also sends its own `tools/list_changed` for every `registerTool()` and `remove()` call on a connected server, so a disable of N tools sends N+1.
-7. **JSON Schema `inputSchema` uses `registerTool` with a passthrough object** — The SDK rejects plain JSON Schema as a tool schema. Zod raw shapes and schemas are passed to `registerTool` as is. Clients see an open object schema for JSON Schema tools, not the declared one.
+7. **`inputSchema` goes through `toRegistrableInputSchema()`** — A Zod 4 schema instance is used as is; a raw shape of Zod 4 values is wrapped with toolception's own `z.object()` (so the SDK never wraps it with a second copy of Zod); a Zod 3 schema throws `ToolingError` `E_VALIDATION` (SDK v2 cannot read it) and the enable fails; anything else is treated as plain JSON Schema and registers as `z.looseObject({})`, so clients see an open object schema, not the declared one, and arguments are not validated.
 8. **Failed tool registration at startup makes the orchestrator not ready** — `enableToolsets()` reports failures in its result and never throws. A failure that carries a `code` (set when enabling threw, normally while registering the toolset's tools, e.g. a tool name collision) becomes `initError`, so `isReady()` is `false` and `ensureReady()` throws. Refusals made before any registration (invalid name, already enabled, exposure policy) carry no code and are ignored. Module loader errors are also ignored: `ModuleResolver` logs them and continues.
 
 ## Enable Toolset Flow
@@ -34,7 +34,7 @@ enableToolset(name)
 
 ## SDK registration
 
-Tools are registered with `McpServer.registerTool` (the 5-arg `server.tool()` overloads are deprecated). Before 1.28 the SDK silently treated a JSON Schema `inputSchema` as annotations, so handlers received the request `extra` instead of arguments; newer SDKs throw. `isZodInputSchema()` routes Zod shapes straight through and everything else to the passthrough object.
+Tools are registered with `McpServer.registerTool` (`server.tool()` no longer exists in SDK v2). The SDK does not accept a plain JSON Schema object as `inputSchema`, so `toRegistrableInputSchema()` maps every tool schema to a Zod 4 schema first. Calling a tool that is not (or no longer) registered makes the SDK answer with a JSON-RPC error, not an `isError` result.
 
 ## Anti-patterns
 

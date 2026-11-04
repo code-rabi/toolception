@@ -1,5 +1,5 @@
 import { createMcpServer } from "../../src/server/createMcpServer.js";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer } from "@modelcontextprotocol/server";
 import type { ToolSetCatalog, ModuleLoader } from "../../src/types/index.js";
 import { z } from "zod";
 
@@ -41,8 +41,7 @@ const createServer = () =>
   new McpServer({
     name: "toolception-server-demo",
     version: "0.1.0",
-    capabilities: { tools: { listChanged: true } },
-  });
+  }, { capabilities: { tools: { listChanged: true } } });
 
 const STATIC = (process.env.STARTUP_MODE || "").toUpperCase() === "STATIC";
 

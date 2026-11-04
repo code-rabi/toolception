@@ -1,9 +1,5 @@
-import type {
-  McpServer,
-  RegisteredTool,
-} from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer, RegisteredTool } from "@modelcontextprotocol/server";
 import { z } from "zod";
-import type { ZodRawShapeCompat } from "@modelcontextprotocol/sdk/server/zod-compat.js";
 import type {
   ExposurePolicy,
   McpToolDefinition,
@@ -251,12 +247,7 @@ export class DynamicToolManager {
     const hasAnnotations =
       tool.annotations && Object.keys(tool.annotations).length > 0;
 
-    // SDK >= 1.28 rejects plain JSON Schema inputSchema; older versions silently
-    // treated it as annotations and dropped the args. Non-Zod schemas register
-    // with a passthrough object so arguments still reach the handler.
-    const inputSchema = isZodInputSchema(tool.inputSchema)
-      ? (tool.inputSchema as ZodRawShapeCompat)
-      : z.object({}).passthrough();
+    const inputSchema = toRegistrableInputSchema(tool.name, tool.inputSchema);
 
     const handle = this.server.registerTool(
       tool.name,
@@ -397,16 +388,65 @@ export class DynamicToolManager {
   }
 }
 
+/** The schema type handed to `registerTool`; arguments arrive as a plain record. */
+type InputSchema = z.ZodType<Record<string, unknown>>;
+
 /**
- * True when the schema is a Zod schema instance (v3 or v4) or a raw shape whose
- * values are all Zod schemas. An empty object counts as an empty raw shape.
- *
- * @param schema - The tool's inputSchema
+ * @param value - Any value
+ * @returns True when the value is a Zod 4 schema instance
  */
-function isZodInputSchema(schema: unknown): boolean {
-  const isZodType = (v: unknown) =>
-    typeof v === "object" && v !== null && ("_def" in v || "_zod" in v);
-  if (typeof schema !== "object" || schema === null) return false;
-  if (isZodType(schema)) return true;
-  return Object.values(schema).every(isZodType);
+function isZod4Type(value: unknown): value is z.ZodType {
+  return typeof value === "object" && value !== null && "_zod" in value;
+}
+
+/**
+ * @param value - Any value
+ * @returns True when the value is a Zod 3 schema instance (has `_def` but not `_zod`)
+ */
+function isZod3Type(value: unknown): boolean {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "_def" in value &&
+    !("_zod" in value)
+  );
+}
+
+/**
+ * Turns a tool's `inputSchema` into the Zod 4 object schema that
+ * `McpServer.registerTool` expects.
+ *
+ * - A Zod 4 schema instance is used as is.
+ * - A raw shape of Zod 4 schemas (an empty object counts as an empty shape) is
+ *   wrapped with toolception's own `z.object()`, so the SDK never wraps it with
+ *   a second copy of Zod.
+ * - Anything else is treated as plain JSON Schema and registers as an open
+ *   object, so arguments still reach the handler.
+ *
+ * @param toolName - The tool name, used in the error message
+ * @param schema - The tool's inputSchema
+ * @returns A schema to pass to `registerTool`
+ * @throws ToolingError `E_VALIDATION` when the schema or a shape value is a Zod 3 schema
+ */
+function toRegistrableInputSchema(
+  toolName: string,
+  schema: unknown
+): InputSchema {
+  if (typeof schema !== "object" || schema === null) return z.looseObject({});
+  const values = isZod4Type(schema) || isZod3Type(schema)
+    ? [schema]
+    : Object.values(schema);
+  if (values.some(isZod3Type)) {
+    throw new ToolingError(
+      `Tool '${toolName}' uses a Zod 3 schema. toolception requires Zod 4 (zod ^4.6.7): MCP SDK v2 cannot read Zod 3 schemas.`,
+      "E_VALIDATION"
+    );
+  }
+  // Casts: tool arguments reach the handler as `Record<string, unknown>`; the
+  // SDK checks object-ness itself when it converts the schema for `tools/list`.
+  if (isZod4Type(schema)) return schema as InputSchema;
+  if (values.every(isZod4Type)) {
+    return z.object(schema as Record<string, z.ZodType>) as InputSchema;
+  }
+  return z.looseObject({});
 }

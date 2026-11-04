@@ -5,7 +5,7 @@ import type {
   ClientRequestContext,
   PermissionAwareBundle,
 } from "../src/permissions/permissions.types.js";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer } from "@modelcontextprotocol/server";
 import Fastify, { type FastifyInstance } from "fastify";
 
 describe("PermissionAwareFastifyTransport", () => {
@@ -24,8 +24,7 @@ describe("PermissionAwareFastifyTransport", () => {
     mockServer = new McpServer({
       name: "test-server",
       version: "1.0.0",
-      capabilities: { tools: { listChanged: false } },
-    });
+    }, { capabilities: { tools: { listChanged: false } } });
 
     mockOrchestrator = {
       getManager: vi.fn().mockReturnValue({

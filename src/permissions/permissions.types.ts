@@ -1,4 +1,4 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import type { ServerOrchestrator } from "../core/ServerOrchestrator.js";
 import type { CustomEndpointDefinition } from "../http/http.types.js";
 

@@ -23,7 +23,7 @@ Also: `src/errors/ToolingError.ts` (18 LOC) — thin error class wrapping Toolin
 2. **ToolingErrorCode values are exhaustive** — All error codes defined here; do not add codes elsewhere
 3. **PermissionConfig requires source field** — Must specify `"headers"` or `"config"`
 4. **SessionContextConfig.allowedKeys is security-critical** — Always whitelist allowed keys; omitting allows arbitrary config injection
-5. **`McpToolDefinition.inputSchema` should be Zod** — A Zod raw shape or Zod object schema. `McpServer.registerTool` does not accept JSON Schema, so `DynamicToolManager` registers JSON Schema tools with an open passthrough object (args unvalidated, properties not advertised)
+5. **`McpToolDefinition.inputSchema` should be Zod 4** — A Zod 4 raw shape or Zod 4 object schema. A Zod 3 schema fails the toolset's enable with `E_VALIDATION`. `McpServer.registerTool` does not accept JSON Schema, so `DynamicToolManager` registers JSON Schema tools with an open object (`z.looseObject({})`: args unvalidated, properties not advertised)
 
 ## Anti-patterns
 

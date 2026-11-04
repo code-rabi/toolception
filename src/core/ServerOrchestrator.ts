@@ -1,4 +1,4 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { ToolsetValidator } from "../mode/ToolsetValidator.js";
 import { ModuleResolver } from "../mode/ModuleResolver.js";
 import { DynamicToolManager } from "./DynamicToolManager.js";

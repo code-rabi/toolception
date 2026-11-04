@@ -50,6 +50,8 @@ These are cross-cutting; see leaf Intent Nodes for module-specific invariants.
 3. **Fail-secure** — Invalid inputs return empty objects/arrays, not errors
 4. **Module loader errors are silent, registration failures are not** — A throwing loader is logged and the toolset activates with fewer tools. A failure while registering a startup toolset's tools (for example a duplicate tool name) makes `isReady()` return `false`: STATIC `createMcpServer` throws at startup and its transport answers the client's `initialize` with a 500 / `-32603` and drops the bundle. `createPermissionBasedMcpServer` is the exception: it enables toolsets in its bundle factory and continues on partial failure
 5. **Disable unregisters tools** — `disableToolset` removes the toolset's tools from the MCP server via the SDK's `RegisteredTool.remove()`; see `src/core/AGENTS.md`
+6. **Clients never share toolset state** — Every `mcp-client-id` (plus session-context cache key) gets its own `McpServer`, orchestrator and `NodeStreamableHTTPServerTransport`. Enabling or disabling a toolset, `tools/list_changed` notifications and session context (tokens) of one client are never visible to another. `tests/e2e/multiClient.e2e.test.ts` is the guard; keep it green on every SDK or transport change
+7. **MCP SDK v2 and Zod 4 only** — Built on `@modelcontextprotocol/server` and `@modelcontextprotocol/node`. SDK v2 cannot read Zod 3 schemas, so tool and endpoint schemas must be Zod 4. There must be one installed copy of `zod` and of `@modelcontextprotocol/server` (`tests/dependencies.test.ts`)
 
 ## Module Index
 

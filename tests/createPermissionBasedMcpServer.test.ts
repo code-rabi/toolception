@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { createPermissionBasedMcpServer } from "../src/server/createPermissionBasedMcpServer.js";
 import type { CreatePermissionBasedMcpServerOptions } from "../src/types/index.js";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer } from "@modelcontextprotocol/server";
 
 describe("createPermissionBasedMcpServer", () => {
   const createBasicOptions = (): CreatePermissionBasedMcpServerOptions => ({
@@ -9,8 +9,7 @@ describe("createPermissionBasedMcpServer", () => {
       new McpServer({
         name: "test-server",
         version: "1.0.0",
-        capabilities: { tools: { listChanged: false } },
-      }),
+      }, { capabilities: { tools: { listChanged: false } } }),
     catalog: {
       toolsetA: {
         name: "Toolset A",
@@ -146,8 +145,7 @@ describe("createPermissionBasedMcpServer", () => {
           new McpServer({
             name: "test-server",
             version: "1.0.0",
-            capabilities: { tools: { listChanged: false } },
-          }),
+          }, { capabilities: { tools: { listChanged: false } } }),
         catalog: {
           toolsetA: {
             name: "Toolset A",
@@ -175,8 +173,7 @@ describe("createPermissionBasedMcpServer", () => {
           new McpServer({
             name: "test-server",
             version: "1.0.0",
-            capabilities: { tools: { listChanged: false } },
-          }),
+          }, { capabilities: { tools: { listChanged: false } } }),
         catalog: {
           toolsetA: {
             name: "Toolset A",
@@ -217,8 +214,7 @@ describe("createPermissionBasedMcpServer", () => {
           new McpServer({
             name: "test-server",
             version: "1.0.0",
-            capabilities: { tools: { listChanged: false } },
-          }),
+          }, { capabilities: { tools: { listChanged: false } } }),
         catalog: {
           toolsetA: {
             name: "Toolset A",
@@ -248,8 +244,7 @@ describe("createPermissionBasedMcpServer", () => {
           new McpServer({
             name: "test-server",
             version: "1.0.0",
-            capabilities: { tools: { listChanged: false } },
-          }),
+          }, { capabilities: { tools: { listChanged: false } } }),
         catalog: {
           toolsetA: {
             name: "Toolset A",
@@ -310,7 +305,7 @@ describe("createPermissionBasedMcpServer", () => {
       const result = await createPermissionBasedMcpServer(options);
 
       expect(result.server).toBeInstanceOf(McpServer);
-      expect(result.server).toHaveProperty("tool");
+      expect(result.server).toHaveProperty("registerTool");
     });
   });
 
@@ -320,8 +315,7 @@ describe("createPermissionBasedMcpServer", () => {
         new McpServer({
           name: "test-server",
           version: "1.0.0",
-          capabilities: { tools: { listChanged: false } },
-        })
+        }, { capabilities: { tools: { listChanged: false } } })
       );
 
       const options: CreatePermissionBasedMcpServerOptions = {
@@ -353,8 +347,7 @@ describe("createPermissionBasedMcpServer", () => {
           new McpServer({
             name: "test-server",
             version: "1.0.0",
-            capabilities: { tools: { listChanged: false } },
-          }),
+          }, { capabilities: { tools: { listChanged: false } } }),
         catalog: {
           toolsetA: {
             name: "Toolset A",
@@ -386,8 +379,7 @@ describe("createPermissionBasedMcpServer", () => {
           new McpServer({
             name: "test-server",
             version: "1.0.0",
-            capabilities: { tools: { listChanged: false } },
-          }),
+          }, { capabilities: { tools: { listChanged: false } } }),
         catalog: {
           toolsetA: {
             name: "Toolset A",
@@ -426,8 +418,7 @@ describe("createPermissionBasedMcpServer", () => {
           new McpServer({
             name: "test-server",
             version: "1.0.0",
-            capabilities: { tools: { listChanged: false } },
-          }),
+          }, { capabilities: { tools: { listChanged: false } } }),
         catalog: {
           toolsetA: {
             name: "Toolset A",

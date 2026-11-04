@@ -1,4 +1,4 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import type { Mode } from "../types/index.js";
 import type { CreateBundleCallback } from "../http/http.types.js";
 import type { CreateMcpServerOptions, McpServerHandle } from "./server.types.js";

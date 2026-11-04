@@ -1,4 +1,4 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import type { ExposurePolicy, PermissionConfig } from "../types/index.js";
 import type { ServerOrchestrator } from "../core/ServerOrchestrator.js";
 import type { PermissionResolver } from "./PermissionResolver.js";

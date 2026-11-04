@@ -1,4 +1,4 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import type { Mode } from "../types/index.js";
 import { z } from "zod";
 import { DynamicToolManager } from "../core/DynamicToolManager.js";
@@ -45,7 +45,7 @@ export function registerMetaTools(
       "enable_toolset",
       {
         description: "Enable a toolset by name",
-        inputSchema: { name: z.string().describe("Toolset name") },
+        inputSchema: z.object({ name: z.string().describe("Toolset name") }),
         annotations: { destructiveHint: false, idempotentHint: true },
       },
       async (args: { name: string }) => {
@@ -61,7 +61,7 @@ export function registerMetaTools(
       "disable_toolset",
       {
         description: "Disable a toolset by name and remove its tools",
-        inputSchema: { name: z.string().describe("Toolset name") },
+        inputSchema: z.object({ name: z.string().describe("Toolset name") }),
         annotations: { destructiveHint: false, idempotentHint: true },
       },
       async (args: { name: string }) => {
@@ -77,7 +77,7 @@ export function registerMetaTools(
       "list_toolsets",
       {
         description: "List available toolsets with active status and definitions",
-        inputSchema: {},
+        inputSchema: z.object({}),
         annotations: { readOnlyHint: true, idempotentHint: true },
       },
       async () => {
@@ -112,7 +112,7 @@ export function registerMetaTools(
       "describe_toolset",
       {
         description: "Describe a toolset with definition, active status and tools",
-        inputSchema: { name: z.string().describe("Toolset name") },
+        inputSchema: z.object({ name: z.string().describe("Toolset name") }),
         annotations: { readOnlyHint: true, idempotentHint: true },
       },
       async (args: { name: string }) => {
@@ -152,7 +152,7 @@ export function registerMetaTools(
     "list_tools",
     {
       description: "List currently registered tool names (best effort)",
-      inputSchema: {},
+      inputSchema: z.object({}),
       annotations: { readOnlyHint: true, idempotentHint: true },
     },
     async () => {

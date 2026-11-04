@@ -1,5 +1,5 @@
 import { createPermissionBasedMcpServer } from "../../src/server/createPermissionBasedMcpServer.js";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer } from "@modelcontextprotocol/server";
 import type { ToolSetCatalog, ModuleLoader } from "../../src/types/index.js";
 import { z } from "zod";
 
@@ -86,8 +86,7 @@ const createServer = () =>
   new McpServer({
     name: "toolception-permission-header-demo",
     version: "0.1.0",
-    capabilities: { tools: {} }, // STATIC mode, no listChanged
-  });
+  }, { capabilities: { tools: {} } }) // STATIC mode, no listChanged;
 
 const { start, close } = await createPermissionBasedMcpServer({
   catalog,
