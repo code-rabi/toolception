@@ -181,7 +181,7 @@ export class PermissionAwareFastifyTransport {
   /**
    * Closes all active sessions and clears the session map so the server is
    * free to accept a new connection. Required because the SDK throws
-   * "Already connected" when `connect()` is called while a transport is
+   * `AlreadyConnected` when `connect()` is called while a transport is
    * still attached. Handles unclean client disconnects followed by re-init.
    *
    * The map is cleared before closing so that `onclose` handlers fired by

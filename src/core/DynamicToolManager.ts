@@ -392,6 +392,8 @@ export class DynamicToolManager {
 type InputSchema = z.ZodType<Record<string, unknown>>;
 
 /**
+ * Detects a Zod 4 schema by its `_zod` internals.
+ *
  * @param value - Any value
  * @returns True when the value is a Zod 4 schema instance
  */
@@ -400,6 +402,8 @@ function isZod4Type(value: unknown): value is z.ZodType {
 }
 
 /**
+ * Detects a Zod 3 schema by its `_def` internals without `_zod`.
+ *
  * @param value - Any value
  * @returns True when the value is a Zod 3 schema instance (has `_def` but not `_zod`)
  */
