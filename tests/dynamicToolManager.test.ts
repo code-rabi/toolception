@@ -472,17 +472,17 @@ describe("DynamicToolManager JSON Schema inputSchema", () => {
   });
 
   it.each([
-    ["a missing required property", {}],
-    ["a wrong type", { symbol: 42 }],
-    ["a violated constraint", { symbol: "AAPL", limit: 0 }],
-    ["an extra property the schema forbids", { symbol: "AAPL", extra: true }],
-  ])("rejects %s without calling the handler", async (_label, args) => {
+    ["a missing required property", {}, /required property 'symbol'/],
+    ["a wrong type", { symbol: 42 }, /symbol must be string/],
+    ["a violated constraint", { symbol: "AAPL", limit: 0 }, /limit must be >= 1/],
+    ["an extra property the schema forbids", { symbol: "AAPL", extra: true }, /additional properties/],
+  ])("rejects %s without calling the handler", async (_label, args, detail) => {
     const { server, manager, handler } = managerFor(symbolSchema);
     await manager.enableToolset("core");
     const client = await connectClient(server);
     const res = await client.callTool({ name: "price", arguments: args });
     expect(res.isError).toBe(true);
-    expect((res.content as any)[0].text).toMatch(/invalid|validation/i);
+    expect((res.content as any)[0].text).toMatch(detail);
     expect(handler).not.toHaveBeenCalled();
   });
 
@@ -533,17 +533,17 @@ describe("DynamicToolManager JSON Schema inputSchema", () => {
     expect(result.message).toMatch(/neither a Zod 4 shape nor a JSON Schema object/);
   });
 
-  it("keeps validators apart per manager: the same $id with different schemas never crosses over", async () => {
+  it("validates each manager's client against its own schema, even for identical nested $id values", async () => {
     const schemaFor = (type: "string" | "number") => ({
-      $id: "https://example.com/price-args",
       type: "object",
-      properties: { value: { type }, },
+      properties: { value: { $ref: "#/$defs/value" } },
       required: ["value"],
+      $defs: { value: { $id: "https://example.com/value", type } },
     });
     const a = managerFor(schemaFor("string"));
     const b = managerFor(schemaFor("number"));
-    await a.manager.enableToolset("core");
-    await b.manager.enableToolset("core");
+    expect((await a.manager.enableToolset("core")).success).toBe(true);
+    expect((await b.manager.enableToolset("core")).success).toBe(true);
     const clientA = await connectClient(a.server);
     const clientB = await connectClient(b.server);
 
@@ -556,6 +556,77 @@ describe("DynamicToolManager JSON Schema inputSchema", () => {
     expect(aNumber.isError).toBe(true);
     expect(bString.isError).toBe(true);
     expect(bNumber.isError).toBeFalsy();
+  });
+
+  it("validates two tools of one manager against their own schema when both declare the same root $id", async () => {
+    const server = new McpServer({ name: "t", version: "1.0.0" });
+    const echo = (args: any) => ({ content: [{ type: "text", text: String(args.value) }] });
+    const schemaFor = (type: "string" | "number") => ({
+      $id: "https://example.com/args",
+      type: "object",
+      properties: { value: { type } },
+      required: ["value"],
+    });
+    const resolver = new ModuleResolver({
+      catalog: {
+        core: {
+          name: "Core",
+          description: "",
+          tools: [
+            { name: "text", description: "Text", inputSchema: schemaFor("string"), handler: echo },
+            { name: "count", description: "Count", inputSchema: schemaFor("number"), handler: echo },
+          ],
+        },
+      } as any,
+    });
+    const manager = new DynamicToolManager({
+      server,
+      resolver,
+      toolRegistry: new ToolRegistry({ namespaceWithToolset: false }),
+    });
+    expect((await manager.enableToolset("core")).success).toBe(true);
+    const client = await connectClient(server);
+
+    expect((await client.callTool({ name: "text", arguments: { value: "x" } })).isError).toBeFalsy();
+    expect((await client.callTool({ name: "text", arguments: { value: 1 } })).isError).toBe(true);
+    expect((await client.callTool({ name: "count", arguments: { value: 1 } })).isError).toBeFalsy();
+    expect((await client.callTool({ name: "count", arguments: { value: "x" } })).isError).toBe(true);
+    // The root $id is neither used nor advertised.
+    const { tools } = await client.listTools();
+    expect(tools.every((t) => !("$id" in t.inputSchema))).toBe(true);
+  });
+
+  it("rolls back the tools registered before a bad JSON Schema tool", async () => {
+    const server = new McpServer({ name: "t", version: "1.0.0" });
+    const resolver = new ModuleResolver({
+      catalog: {
+        core: {
+          name: "Core",
+          description: "",
+          tools: [
+            { name: "good", description: "Good", inputSchema: symbolSchema, handler: async () => ({ content: [] }) },
+            {
+              name: "bad",
+              description: "Bad",
+              inputSchema: { type: "object", properties: { a: { type: "strng" } } },
+              handler: async () => ({ content: [] }),
+            },
+          ],
+        },
+      } as any,
+    });
+    const manager = new DynamicToolManager({
+      server,
+      resolver,
+      toolRegistry: new ToolRegistry({ namespaceWithToolset: false }),
+    });
+    const result = await manager.enableToolset("core");
+    expect(result.success).toBe(false);
+    expect(result.code).toBe("E_VALIDATION");
+    expect(result.message).toMatch(/Tool 'bad'/);
+    expect(manager.isActive("core")).toBe(false);
+    const client = await connectClient(server);
+    expect((await client.listTools()).tools).toEqual([]);
   });
 
   it("re-enables a JSON Schema toolset with a $id after disabling it", async () => {

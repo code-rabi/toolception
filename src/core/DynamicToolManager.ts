@@ -31,12 +31,12 @@ export class DynamicToolManager {
   /** SDK handles of each toolset's registered tools, used to unregister them. */
   private readonly toolHandles = new Map<string, readonly RegisteredTool[]>();
   /**
-   * Validator for JSON Schema tools, created on first use. It is deliberately
-   * per manager (so per client): the SDK's shared default validator caches
-   * compiled schemas by `$id` and by object for the life of the process, which
-   * would let one client's schema answer for another's and grow with every client.
+   * Compiles the JSON Schemas of this manager's tools. It is deliberately per
+   * manager (so per client): Ajv keeps every compiled schema for the validator's
+   * lifetime, so the SDK's process-wide default validator would hold all clients'
+   * schemas until exit. Here they are freed with the client, and nothing is shared.
    */
-  private jsonSchemaValidator?: jsonSchemaValidator;
+  private readonly schemaValidator = new AjvJsonSchemaValidator();
 
   constructor(options: DynamicToolManagerOptions) {
     this.server = options.server;
@@ -265,7 +265,7 @@ export class DynamicToolManager {
     const inputSchema = toRegistrableInputSchema(
       tool.name,
       tool.inputSchema,
-      () => (this.jsonSchemaValidator ??= new AjvJsonSchemaValidator())
+      this.schemaValidator
     );
 
     const handle = this.server.registerTool(
@@ -449,11 +449,15 @@ function isZod3Type(value: unknown): boolean {
  * - A plain JSON Schema object (`type: "object"`) goes through the SDK's
  *   `fromJsonSchema()`: clients see its real properties and arguments are
  *   validated against it before the handler runs.
- * - A missing schema registers as an open object, so arguments still reach the handler.
+ *   The root `$id` is dropped before compiling (so it is not advertised either): the
+ *   validator caches compiled schemas by `$id`, which would give two tools with the same
+ *   `$id` the first tool's validator. Reference the root with `#` instead of its `$id` URL.
+ * - A missing or non-object schema registers as an open object, so arguments still
+ *   reach the handler.
  *
  * @param toolName - The tool name, used in error messages
  * @param schema - The tool's inputSchema
- * @param getValidator - Supplies the JSON Schema validator; called only for JSON Schema tools
+ * @param validator - Compiles JSON Schema tools; scoped to one client by the caller
  * @returns A schema to pass to `registerTool`
  * @throws ToolingError `E_VALIDATION` when the schema or a shape value is a Zod 3 schema,
  *   when the schema is neither a Zod 4 shape nor a JSON Schema object, or when the JSON
@@ -462,7 +466,7 @@ function isZod3Type(value: unknown): boolean {
 function toRegistrableInputSchema(
   toolName: string,
   schema: unknown,
-  getValidator: () => jsonSchemaValidator
+  validator: jsonSchemaValidator
 ): InputSchema {
   if (typeof schema !== "object" || schema === null) {
     return z.looseObject({}) as InputSchema;
@@ -488,11 +492,10 @@ function toRegistrableInputSchema(
       "E_VALIDATION"
     );
   }
+  const compilable: JsonSchemaType = { ...(schema as JsonSchemaType) };
+  delete compilable.$id;
   try {
-    return fromJsonSchema<Record<string, unknown>>(
-      schema as JsonSchemaType,
-      getValidator()
-    );
+    return fromJsonSchema<Record<string, unknown>>(compilable, validator);
   } catch (error) {
     throw new ToolingError(
       `Tool '${toolName}' has an invalid JSON Schema inputSchema: ${
