@@ -84,7 +84,7 @@ const createServer = () =>
   new McpServer({
     name: "toolception-permission-config-demo",
     version: "0.1.0",
-  }, { capabilities: { tools: {} } }) // STATIC mode, no listChanged;
+  }, { capabilities: { tools: {} } }); // STATIC mode, no listChanged
 
 /**
  * Static permission map for known clients.

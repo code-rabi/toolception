@@ -341,7 +341,7 @@ describe("DynamicToolManager with a real McpServer", () => {
 });
 
 describe("DynamicToolManager input schema handling (Zod 4)", () => {
-  async function enable(inputSchema: unknown) {
+  async function enable(inputSchema: unknown, precedingTools: unknown[] = []) {
     const server = new McpServer({ name: "t", version: "1.0.0" });
     const resolver = new ModuleResolver({
       catalog: {
@@ -349,6 +349,7 @@ describe("DynamicToolManager input schema handling (Zod 4)", () => {
           name: "Core",
           description: "",
           tools: [
+            ...precedingTools,
             {
               name: "echo",
               description: "Echo",
@@ -397,10 +398,16 @@ describe("DynamicToolManager input schema handling (Zod 4)", () => {
     expect((res.content as any)[0].text).toBe("none");
   });
 
-  it("refuses a Zod 3 schema with a clear error, and registers nothing", async () => {
+  it("refuses a Zod 3 schema with a clear error, and rolls back the toolset's earlier tools", async () => {
     // A Zod 3 type has `_def` but no `_zod`.
     const zod3Like = { _def: { typeName: "ZodString" }, parse: () => "" };
-    const { result, client } = await enable({ text: zod3Like });
+    const first = {
+      name: "first",
+      description: "Registers before the bad tool",
+      inputSchema: {},
+      handler: async () => ({ content: [{ type: "text", text: "ok" }] }),
+    };
+    const { result, client } = await enable({ text: zod3Like }, [first]);
     expect(result.success).toBe(false);
     expect(result.code).toBe("E_VALIDATION");
     expect(result.message).toMatch(/Tool 'echo' uses a Zod 3 schema.*Zod 4/);
