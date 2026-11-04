@@ -63,8 +63,14 @@ async function metaCall(c: Connected, tool: string, name: string) {
   );
 }
 
-/** Lets pending SSE notifications reach the clients. */
-const settle = () => new Promise((resolve) => setTimeout(resolve, 100));
+/** Polls until `condition` holds, so tests do not depend on a fixed delay. */
+async function waitFor(condition: () => boolean, timeoutMs = 3000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!condition()) {
+    if (Date.now() > deadline) throw new Error("Timed out waiting for condition");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
 
 describe("multiple concurrent clients keep their own toolset state", () => {
   describe("DYNAMIC mode", () => {
@@ -143,14 +149,14 @@ describe("multiple concurrent clients keep their own toolset state", () => {
     it("sends tools/list_changed only to the client whose state changed", async () => {
       const a = await connect(port, "multi-a3");
       const b = await connect(port, "multi-b3");
-      await settle();
       const bBefore = b.listChangedCount();
       const aBefore = a.listChangedCount();
 
       await metaCall(a, "enable_toolset", "core");
-      await settle();
+      // Once A has been notified, B would have been too if the change leaked.
+      await waitFor(() => a.listChangedCount() > aBefore);
+      await toolNames(b);
 
-      expect(a.listChangedCount()).toBeGreaterThan(aBefore);
       expect(b.listChangedCount()).toBe(bBefore);
 
       await a.client.close();
