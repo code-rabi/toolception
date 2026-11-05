@@ -821,7 +821,7 @@ Usage and behavior
 | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Key naming       | The object key is the module identifier referenced in `catalog[toolset].modules`. Example: `{ ext: async () => [...] }` and `modules: ["ext"]`.          |
 | Loader signature | `(context?: unknown) => Promise<McpToolDefinition[]>` or `McpToolDefinition[]`                                                                           |
-| When called      | STATIC mode: at startup (for specified toolsets or ALL). DYNAMIC mode: when a toolset is enabled via meta-tools.                                         |
+| When called      | STATIC mode: at startup and again for each connecting client (for specified toolsets or ALL). DYNAMIC mode: when a toolset is enabled via meta-tools.                                         |
 | Return value     | An array of tools to register. Tool names should be unique per toolset; if `namespaceToolsWithSetKey` is true, names are prefixed at registration.       |
 | Errors           | Throwing rejects the enable/preload flow for that toolset and surfaces an error to the caller.                                                           |
 | Idempotency      | Loaders may be invoked multiple times across runs/clients. Keep them deterministic/idempotent. Implement internal caching if they perform expensive I/O. |
@@ -910,8 +910,8 @@ Notes
 - Only `moduleLoaders` receive `context`. Direct tools defined inline in `catalog` do not.
 - Not exposed to clients over HTTP; it stays in-process on the server.
 - Keep it lightweight and stable; prefer passing handles (e.g., db client) rather than huge data blobs.
-- STATIC mode: loaders are invoked at startup with the same `context`.
-- DYNAMIC mode: loaders are invoked at enable time with the same `context`.
+- STATIC mode: loaders run at startup and again for each connecting client, with that client's merged context (the base `context` when no session context applies).
+- DYNAMIC mode: loaders are invoked at enable time with the client's merged context (the base `context` when no session context applies).
 
 Example
 
