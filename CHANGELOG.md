@@ -18,7 +18,7 @@ Releases before 0.7.0 are described in [GitHub Releases](https://github.com/code
 
 ### Fixed
 
-- Dependency advisories: Zod 4.6.7 clears the high-severity `zod` finding (GHSA-mrhx-c7xc-m3w5); `body-parser`, `qs` and `ip-address` leave the tree with the v1 SDK's Express dependencies; `fastify` 5.12.8 and `fast-uri` 3.1.9 come from a lockfile refresh. Only the dev-only `minimatch` chain through `vite-plugin-dts` 4 remains, and it does not ship in the package.
+- Dependency advisories: Zod 4.6.7 clears the high-severity `zod` finding (GHSA-mrhx-c7xc-m3w5); `body-parser`, `qs` and `ip-address` leave the tree with the v1 SDK's Express dependencies; `fastify` 5.12.8 and `fast-uri` 3.1.9 come from a lockfile refresh. `vite-plugin-dts` 5 and a dev-only `minimatch` override clear the last dev-only audit findings; none of this ships in the package.
 
 ## [0.8.0]
 

@@ -38,7 +38,7 @@
     "tsx": "^4.19.0",
     "typescript": "^5.9.2",
     "vite": "^7.2.4",
-    "vite-plugin-dts": "^4.5.4",
+    "vite-plugin-dts": "^5.1.2",
     "vitest": "^5.0.3"
   },
   "engines": {
@@ -79,5 +79,10 @@
   },
   "bugs": {
     "url": "https://github.com/code-rabi/toolception/issues"
+  },
+  "overrides": {
+    "@microsoft/api-extractor": {
+      "minimatch": "^11.0.1"
+    }
   }
 }
