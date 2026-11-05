@@ -24,7 +24,7 @@ Provides Fastify-based HTTP transport for the MCP protocol. Handles SSE streams,
 ## Invariants
 
 1. **`mcp-client-id` header required** — All `/mcp` endpoints reject without it (400). Custom endpoints auto-generate `anon-${UUID}` fallback instead.
-2. **Session created on POST /mcp initialize** — `isInitializeRequest()` from MCP SDK detects first-contact requests. New session ID generated via `randomUUID()`, stored in `bundle.sessions` Map.
+2. **Session created on POST /mcp initialize** — `isInitializeRequest()` from `@modelcontextprotocol/server` detects first-contact requests. New session ID generated via `randomUUID()`, stored in `bundle.sessions` Map.
 3. **Cache key uses `resolveSessionContext()`** — All three `/mcp` handlers (POST, GET, DELETE) must derive the cache key through the same `resolveSessionContext()` path. Using plain `clientId` causes cache misses when session context is active.
 4. **Origin check is opt-in and `/mcp`-only** — `allowedOrigins` unset means no check (backward compatible). When set: no `Origin` header → allowed (non-browser clients), listed → allowed, anything else (including `null`, which can never be listed) → 403 before the `mcp-client-id` check. Invalid entries throw at transport construction. Both transports must keep the same behaviour, and `cors` narrows to the same list.
 5. **Reserved paths cannot be overridden** — `/mcp`, `/healthz`, `/tools`, `/.well-known/mcp-config` are registered before custom endpoints.
@@ -36,10 +36,10 @@ Provides Fastify-based HTTP transport for the MCP protocol. Handles SSE streams,
    → isInitializeRequest(body) detects first contact
    → drainExistingSessions() — closes sessions in this bundle's map (same-client reconnect)
    → disconnectServer()      — closes the bundle server's current transport (stale same-client connection)
-   → Set transport.onclose BEFORE server.connect() (SDK 1.26+ chain requirement)
+   → Set transport.onclose BEFORE server.connect() (SDK chain requirement)
    → await bundle.orchestrator.isReady() — STATIC bundles preload tools async; SDK refuses capability registration after connect
    → not ready → drop the bundle from the cache, respond 500 / JSON-RPC -32603; never connect with partial tools (no negative caching: each retry re-runs the module loaders)
-   → server.connect(transport) — throws "Already connected" if above steps missed
+   → server.connect(transport) — throws `SdkError` `AlreadyConnected` if above steps missed
    → Generate session ID, store in bundle.sessions via onsessioninitialized
 
 2. GET /mcp (streaming)
@@ -55,9 +55,9 @@ Provides Fastify-based HTTP transport for the MCP protocol. Handles SSE streams,
    → Remove session from bundle
 ```
 
-## SDK 1.26+ Reconnection Protocol
+## SDK Reconnection Protocol
 
-`Protocol.connect()` throws `"Already connected"` if `this._transport` is still set. Two private methods handle the pre-connect cleanup:
+`Protocol.connect()` throws `AlreadyConnected` ("call close() first") if `this._transport` is still set. Two private methods handle the pre-connect cleanup:
 
 - **`drainExistingSessions(sessions)`** — covers same-bundle reconnects where sessions are still in the map (e.g. client aborted without DELETE but same `clientId`)
 - **`disconnectServer(server)`** — clears a bundle server still attached to a transport that left without DELETE; `StreamableHTTPClientTransport.close()` does NOT send DELETE (it only aborts connections), so `_transport` can remain set. Bundles never share a server, so this only ever closes the same client's stale connection

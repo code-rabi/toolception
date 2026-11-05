@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { z } from "zod";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer } from "@modelcontextprotocol/server";
 import Fastify, { type FastifyInstance } from "fastify";
 import { createMcpServer, defineEndpoint } from "../src/index.js";
 import { createPermissionBasedMcpServer, definePermissionAwareEndpoint } from "../src/index.js";

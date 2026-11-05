@@ -297,7 +297,7 @@ export function createValidationError(
     error: {
       code: "VALIDATION_ERROR",
       message: `Validation failed for ${field}`,
-      details: error.errors,
+      details: error.issues,
     },
   };
 }

@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { createMcpServer } from "../../src/index.js";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
+import { McpServer } from "@modelcontextprotocol/server";
 import {
   getAvailablePort,
   testCatalog,
@@ -197,12 +196,10 @@ describe("DYNAMIC mode E2E", () => {
 
     // Disabled tools are no longer listed and can no longer be called
     expect(extractToolNames(await client.listTools())).not.toContain("core.ping");
-    const staleCall = await client.callTool({
-      name: "core.ping",
-      arguments: {},
-    } as any);
-    expect(staleCall.isError).toBe(true);
-    expect(extractTextContent(staleCall)).toMatch(/not found/i);
+    // SDK v2 answers an unknown tool with a JSON-RPC error, not an `isError` result
+    await expect(
+      client.callTool({ name: "core.ping", arguments: {} } as any)
+    ).rejects.toThrow(/not found/i);
 
     await client.close();
   });

@@ -23,7 +23,7 @@ export default defineConfig({
     sourcemap: true,
     rollupOptions: {
       external: [
-        /^@modelcontextprotocol\/sdk(\/.*)?$/,
+        /^@modelcontextprotocol\/(server|node)(\/.*)?$/,
         /^fastify(\/.*)?$/,
         /^@fastify\/cors(\/.*)?$/,
         "zod",

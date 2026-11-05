@@ -79,8 +79,10 @@ Toolception addresses this by grouping tools into toolsets and letting you expos
 ### Step 1: Install
 
 ```bash
-npm i toolception
+npm i toolception @modelcontextprotocol/server zod
 ```
+
+Toolception 0.9 is built on MCP TypeScript SDK v2 (`@modelcontextprotocol/server`) and needs Zod 4 (`zod` ^4.6.7); Zod 3 schemas are rejected. Install the same versions toolception depends on, so your app and toolception share one copy of each.
 
 ### Step 2: Import Toolception
 
@@ -98,7 +100,7 @@ const catalog = {
 
 ### Step 4: Define a tool
 
-`inputSchema` should be a Zod raw shape (or a Zod object schema), the same form `McpServer.registerTool` takes. A plain JSON Schema object still works, but clients see an open object schema and arguments reach the handler unvalidated.
+`inputSchema` should be a Zod 4 raw shape (or a Zod 4 object schema); toolception wraps a raw shape with `z.object()` before it calls `McpServer.registerTool`. A Zod 3 schema fails to enable its toolset with an `E_VALIDATION` error. A plain JSON Schema object still works, but clients see an open object schema and arguments reach the handler unvalidated.
 
 ```ts
 import { z } from "zod";
@@ -140,15 +142,14 @@ const configSchema = {
 ### Step 7: Create the MCP SDK server and start Toolception
 
 ```ts
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer } from "@modelcontextprotocol/server";
 
 // You own the SDK server; pass a factory into Toolception (required in DYNAMIC mode)
 const createServer = () =>
   new McpServer({
     name: "my-mcp-server",
     version: "0.0.0",
-    capabilities: { tools: { listChanged: true } },
-  });
+  }, { capabilities: { tools: { listChanged: true } } });
 
 const { start, close } = await createMcpServer({
   catalog,
@@ -179,7 +180,7 @@ process.on("SIGTERM", async () => {
 Enable some or ALL toolsets at bootstrap. In STATIC mode, a single server instance is created and reused for all clients:
 
 ```ts
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer } from "@modelcontextprotocol/server";
 
 const staticCatalog = {
   search: { name: "Search", description: "Search tools", modules: ["search"] },
@@ -195,8 +196,7 @@ createMcpServer({
     new McpServer({
       name: "static-1",
       version: "0.0.0",
-      capabilities: { tools: { listChanged: false } },
-    }),
+    }, { capabilities: { tools: { listChanged: false } } }),
 });
 
 // Load ALL toolsets
@@ -208,8 +208,7 @@ createMcpServer({
     new McpServer({
       name: "static-2",
       version: "0.0.0",
-      capabilities: { tools: { listChanged: false } },
-    }),
+    }, { capabilities: { tools: { listChanged: false } } }),
 });
 ```
 
@@ -220,14 +219,16 @@ Use `createPermissionBasedMcpServer` when you need to enforce client-specific to
 ### Step 1: Install
 
 ```bash
-npm i toolception
+npm i toolception @modelcontextprotocol/server zod
 ```
+
+Toolception 0.9 is built on MCP TypeScript SDK v2 (`@modelcontextprotocol/server`) and needs Zod 4 (`zod` ^4.6.7); Zod 3 schemas are rejected. Install the same versions toolception depends on, so your app and toolception share one copy of each.
 
 ### Step 2: Import Toolception
 
 ```ts
 import { createPermissionBasedMcpServer } from "toolception";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer } from "@modelcontextprotocol/server";
 ```
 
 ### Step 3: Define a toolset catalog
@@ -309,8 +310,7 @@ const createServer = () =>
   new McpServer({
     name: "permission-header-server",
     version: "1.0.0",
-    capabilities: { tools: { listChanged: false } },
-  });
+  }, { capabilities: { tools: { listChanged: false } } });
 
 const { start, close } = await createPermissionBasedMcpServer({
   catalog,
@@ -333,8 +333,7 @@ const createServer = () =>
   new McpServer({
     name: "permission-config-server",
     version: "1.0.0",
-    capabilities: { tools: { listChanged: false } },
-  });
+  }, { capabilities: { tools: { listChanged: false } } });
 
 const { start, close } = await createPermissionBasedMcpServer({
   catalog,
@@ -361,8 +360,7 @@ const createServer = () =>
   new McpServer({
     name: "permission-resolver-server",
     version: "1.0.0",
-    capabilities: { tools: { listChanged: false } },
-  });
+  }, { capabilities: { tools: { listChanged: false } } });
 
 const { start, close } = await createPermissionBasedMcpServer({
   catalog,
@@ -410,14 +408,13 @@ Use header-based permissions when you have an authentication gateway or proxy th
 
 ```ts
 import { createPermissionBasedMcpServer } from "toolception";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer } from "@modelcontextprotocol/server";
 
 const createServer = () =>
   new McpServer({
     name: "permission-header-server",
     version: "1.0.0",
-    capabilities: { tools: { listChanged: false } },
-  });
+  }, { capabilities: { tools: { listChanged: false } } });
 
 const { start, close } = await createPermissionBasedMcpServer({
   catalog: {
@@ -464,14 +461,13 @@ Use a static map when you have a fixed set of clients with known permissions. Th
 
 ```ts
 import { createPermissionBasedMcpServer } from "toolception";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer } from "@modelcontextprotocol/server";
 
 const createServer = () =>
   new McpServer({
     name: "permission-config-server",
     version: "1.0.0",
-    capabilities: { tools: { listChanged: false } },
-  });
+  }, { capabilities: { tools: { listChanged: false } } });
 
 const { start, close } = await createPermissionBasedMcpServer({
   catalog: {
@@ -522,14 +518,13 @@ Use a resolver function when you need custom logic to determine permissions, suc
 
 ```ts
 import { createPermissionBasedMcpServer } from "toolception";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer } from "@modelcontextprotocol/server";
 
 const createServer = () =>
   new McpServer({
     name: "permission-resolver-server",
     version: "1.0.0",
-    capabilities: { tools: { listChanged: false } },
-  });
+  }, { capabilities: { tools: { listChanged: false } } });
 
 const { start, close } = await createPermissionBasedMcpServer({
   catalog: {
@@ -723,7 +718,7 @@ Use the `sessionContext` option to enable per-client context values extracted fr
 
 ```ts
 import { createMcpServer } from "toolception";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer } from "@modelcontextprotocol/server";
 
 const { start } = await createMcpServer({
   catalog: { /* ... */ },
@@ -741,8 +736,7 @@ const { start } = await createMcpServer({
   createServer: () => new McpServer({
     name: "my-server",
     version: "1.0.0",
-    capabilities: { tools: { listChanged: true } },
-  }),
+  }, { capabilities: { tools: { listChanged: true } } }),
   http: { port: 3000 },
 });
 
@@ -1105,8 +1099,7 @@ Note: In STATIC mode, `enable_toolset`, `disable_toolset`, `list_toolsets`, and 
 When connecting to a permission-based server with header-based permissions, include the `mcp-toolset-permissions` header with a comma-separated list of toolsets:
 
 ```ts
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 
 const clientId = "my-client-id";
 const allowedToolsets = ["user", "reports"]; // determined by your auth system
@@ -1140,8 +1133,7 @@ await client.close();
 When connecting to a permission-based server with config-based permissions, only provide the `mcp-client-id` header. The server looks up permissions internally:
 
 ```ts
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 
 const clientId = "admin-client-id"; // matches server's staticMap or resolver
 
@@ -1178,8 +1170,7 @@ await client.close();
 Examples (official MCP client)
 
 ```ts
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 
 // Create a stable client id (persist it for reuse across runs)
 const clientId = "my-stable-client-id"; // e.g., from disk/env
@@ -1215,8 +1206,7 @@ await client.close();
 Examples (official MCP client)
 
 ```ts
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 
 const clientId = "my-stable-client-id";
 const transport = new StreamableHTTPClientTransport(
@@ -1382,7 +1372,7 @@ Create a server where each tenant has access to their own toolsets plus shared t
 
 ```ts
 import { createPermissionBasedMcpServer } from "toolception";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer } from "@modelcontextprotocol/server";
 
 const { start, close } = await createPermissionBasedMcpServer({
   catalog: {
@@ -1431,8 +1421,7 @@ const { start, close } = await createPermissionBasedMcpServer({
     new McpServer({
       name: "multi-tenant-server",
       version: "1.0.0",
-      capabilities: { tools: { listChanged: false } },
-    }),
+    }, { capabilities: { tools: { listChanged: false } } }),
 });
 
 await start();
@@ -1444,7 +1433,7 @@ Integrate with an external authentication system by pre-loading permissions:
 
 ```ts
 import { createPermissionBasedMcpServer } from "toolception";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer } from "@modelcontextprotocol/server";
 
 // Pre-load permissions from your auth system
 // This should be done before server creation and cached
@@ -1486,8 +1475,7 @@ const { start, close } = await createPermissionBasedMcpServer({
     new McpServer({
       name: "auth-integrated-server",
       version: "1.0.0",
-      capabilities: { tools: { listChanged: false } },
-    }),
+    }, { capabilities: { tools: { listChanged: false } } }),
 });
 
 await start();
@@ -1499,7 +1487,7 @@ Implement role-based access control with predefined role-to-toolset mappings:
 
 ```ts
 import { createPermissionBasedMcpServer } from "toolception";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer } from "@modelcontextprotocol/server";
 
 // Define role-to-toolset mappings
 const rolePermissions = {
@@ -1587,8 +1575,7 @@ const { start, close } = await createPermissionBasedMcpServer({
     new McpServer({
       name: "rbac-server",
       version: "1.0.0",
-      capabilities: { tools: { listChanged: false } },
-    }),
+    }, { capabilities: { tools: { listChanged: false } } }),
 });
 
 await start();

@@ -4,6 +4,22 @@ All notable changes to `toolception` are listed here. Versions follow [semver](h
 
 Releases before 0.7.0 are described in [GitHub Releases](https://github.com/code-rabi/toolception/releases).
 
+## [Unreleased]
+
+### Breaking
+
+- Toolception now runs on MCP TypeScript SDK v2 and Zod 4. The `@modelcontextprotocol/sdk` dependency is replaced by `@modelcontextprotocol/server` and `@modelcontextprotocol/node`, and `zod` moves from ^3.25 to ^4.6.7. SDK v2 does not read Zod 3 schemas, so the two cannot be upgraded separately.
+  - **Migration:** change your imports to `@modelcontextprotocol/server` (`McpServer`) and `@modelcontextprotocol/client` (`Client`, `StreamableHTTPClientTransport`); install `zod` ^4.6.7; and write tool `inputSchema` values and `defineEndpoint` schemas with Zod 4. `z.record()` needs two arguments in Zod 4. Pass server capabilities as the second `McpServer` argument (`new McpServer(info, { capabilities })`); `capabilities` inside the first argument is rejected by the types.
+  - A tool whose `inputSchema` is a Zod 3 schema (or a raw shape holding one) now fails to enable with an `E_VALIDATION` error that names the tool.
+  - `createServer` factories must return a v2 `McpServer`; the removed `server.tool()`, `server.prompt()` and `server.resource()` are replaced by `registerTool`, `registerPrompt` and `registerResource`.
+- `defineEndpoint` / `definePermissionAwareEndpoint` validation failures (`VALIDATION_ERROR`, HTTP 400) now carry Zod 4 issue objects in `error.details`: issue codes and messages differ from Zod 3 (for example `invalid_type` messages). Clients that match on the old text must be updated.
+- Calling a tool the server no longer lists (for example a disabled toolset's tool) is now answered with a JSON-RPC error ("Tool ... not found") instead of a result with `isError: true`. This is SDK v2 behaviour.
+- `FastifyTransport` and `PermissionAwareFastifyTransport` use `NodeStreamableHTTPServerTransport` from `@modelcontextprotocol/node`. Session handling, the per-client `mcp-client-id` model and the HTTP endpoints are unchanged: each client still gets its own server, transport and enabled/disabled toolset state.
+
+### Fixed
+
+- Dependency advisories: Zod 4.6.7 clears the high-severity `zod` finding (GHSA-mrhx-c7xc-m3w5); `body-parser`, `qs` and `ip-address` leave the tree with the v1 SDK's Express dependencies; `fastify` 5.12.8 and `fast-uri` 3.1.9 come from a lockfile refresh. Only the dev-only `minimatch` chain through `vite-plugin-dts` 4 remains, and it does not ship in the package.
+
 ## [0.8.0]
 
 ### Breaking

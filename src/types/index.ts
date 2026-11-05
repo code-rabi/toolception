@@ -4,9 +4,10 @@ export type McpToolDefinition = {
   name: string;
   description: string;
   /**
-   * Zod raw shape (e.g. `{ symbol: z.string() }`) or Zod object schema, as accepted
-   * by `McpServer.registerTool`. A plain JSON Schema object is registered as an
-   * open passthrough object: clients don't see its properties and args are not validated.
+   * Zod 4 raw shape (e.g. `{ symbol: z.string() }`) or Zod 4 object schema. A raw
+   * shape is wrapped with `z.object()` before it reaches `McpServer.registerTool`;
+   * a Zod 3 schema is refused (`E_VALIDATION`). A plain JSON Schema object is
+   * registered as an open object: clients don't see its properties and args are not validated.
    */
   inputSchema: Record<string, any>;
   handler: (args: any) => Promise<any> | any;

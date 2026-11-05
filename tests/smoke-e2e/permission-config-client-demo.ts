@@ -1,5 +1,4 @@
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport, Client } from "@modelcontextprotocol/client";
 
 /**
  * Smoke test client demonstrating config-based permission control.

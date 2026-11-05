@@ -1,4 +1,4 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import type { ExposurePolicy, ModuleLoader, Mode, ToolSetCatalog } from "../types/index.js";
 import type { ModuleResolver } from "../mode/ModuleResolver.js";
 import type { ToolRegistry } from "./ToolRegistry.js";

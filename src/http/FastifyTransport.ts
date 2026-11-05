@@ -11,9 +11,9 @@ import type { ServerOrchestrator } from "../core/ServerOrchestrator.js";
 import { ClientResourceCache } from "../session/ClientResourceCache.js";
 import type { SessionContextResolver } from "../session/SessionContextResolver.js";
 import type { SessionRequestContext } from "../types/index.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { isInitializeRequest } from "@modelcontextprotocol/server";
+import type { McpServer } from "@modelcontextprotocol/server";
+import { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node";
 import type {
   FastifyTransportOptions,
   CreateBundleCallback,
@@ -55,7 +55,7 @@ export class FastifyTransport {
   private readonly clientCache = new ClientResourceCache<{
     server: McpServer;
     orchestrator: ServerOrchestrator;
-    sessions: Map<string, StreamableHTTPServerTransport>;
+    sessions: Map<string, NodeStreamableHTTPServerTransport>;
   }>({
     onEvict: (_key, bundle) => {
       // Clean up all sessions when a client bundle is evicted
@@ -233,21 +233,21 @@ export class FastifyTransport {
 
         const sessionId = req.headers["mcp-session-id"] as string | undefined;
 
-        let transport: StreamableHTTPServerTransport | undefined;
+        let transport: NodeStreamableHTTPServerTransport | undefined;
         if (sessionId && bundle.sessions.get(sessionId)) {
           transport = bundle.sessions.get(sessionId)!;
         } else if (!sessionId && isInitializeRequest(req.body)) {
           await this.drainExistingSessions(bundle.sessions);
           await this.disconnectServer(bundle.server);
           const newSessionId = randomUUID();
-          transport = new StreamableHTTPServerTransport({
+          transport = new NodeStreamableHTTPServerTransport({
             sessionIdGenerator: () => newSessionId,
             onsessioninitialized: (sid: string) => {
               bundle!.sessions.set(sid, transport!);
             },
           });
           // Set onclose BEFORE connect() so Protocol.connect() captures it in its
-          // chain. SDK 1.26+ wraps the existing onclose alongside _onclose(), so
+          // chain. The SDK wraps the existing onclose alongside _onclose(), so
           // _transport is cleared on disconnect only if this ordering is preserved.
           transport.onclose = () => {
             if (transport?.sessionId)
@@ -399,8 +399,8 @@ export class FastifyTransport {
 
   /**
    * Closes all active sessions and clears the session map so the server is
-   * free to accept a new connection. Required for SDK 1.26+, which throws
-   * "Already connected" when `connect()` is called while a transport is
+   * free to accept a new connection. Required because the SDK throws
+   * `AlreadyConnected` when `connect()` is called while a transport is
    * still attached. Handles unclean client disconnects followed by re-init.
    *
    * The map is cleared before closing so that `onclose` handlers fired by
@@ -409,7 +409,7 @@ export class FastifyTransport {
    * @param sessions - The client's active session map to drain
    */
   private async drainExistingSessions(
-    sessions: Map<string, StreamableHTTPServerTransport>
+    sessions: Map<string, NodeStreamableHTTPServerTransport>
   ): Promise<void> {
     if (sessions.size === 0) return;
     const existing = Array.from(sessions.values());
@@ -441,7 +441,7 @@ export class FastifyTransport {
   private cleanupBundle(bundle: {
     server: McpServer;
     orchestrator: ServerOrchestrator;
-    sessions: Map<string, StreamableHTTPServerTransport>;
+    sessions: Map<string, NodeStreamableHTTPServerTransport>;
   }): void {
     for (const [sessionId, transport] of bundle.sessions.entries()) {
       transport.close().catch((err: unknown) => {
