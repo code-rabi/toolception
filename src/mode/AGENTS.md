@@ -7,11 +7,12 @@ Handles toolset resolution, validation, and module loading. Bridges toolset defi
 ## Key Components
 
 - **ModuleResolver** (`ModuleResolver.ts`) — Stores catalog, validates toolset names, resolves tools by collecting direct tools + calling module loaders.
+- **moduleLoading.ts** — empty placeholder: no code, nothing imports it.
 - **ToolsetValidator** (`ModeResolver.ts`) — Validates toolset names against a provided catalog, parses comma-separated toolset strings. Also resolves startup mode from env/args.
 
 ## Invariants
 
-1. **`_meta` is rejected** — `RESERVED_TOOLSET_KEYS` (`mode.types.ts`): the `ModuleResolver` constructor throws if the catalog has such a key, and `validateToolsetName()` refuses it again as defense in depth. `moduleLoading.ts` is an empty placeholder (no code, nothing imports it).
+1. **`_meta` is rejected** — `RESERVED_TOOLSET_KEYS` (`mode.types.ts`): the `ModuleResolver` constructor throws if the catalog has such a key, and `validateToolsetName()` refuses it again as defense in depth.
 2. **Module loaders fail silently** — Errors caught, logged as warnings, skipped. Toolset activates with whatever tools succeeded. This is intentional — one broken loader should not block the rest.
 3. **ToolsetValidator is in ModeResolver.ts** — Historical naming quirk. `ToolsetValidator.ts` just re-exports from `ModeResolver.ts`. Import from either file.
 4. **ModuleResolver stores catalog; ToolsetValidator takes it as parameter** — Different validation signatures. ModuleResolver validates against its stored catalog; ToolsetValidator is stateless.
@@ -33,7 +34,7 @@ resolveToolsForToolsets([toolsetName], context)
 
 ## Anti-patterns
 
-- Throwing on invalid toolset names (return validation result instead)
+- Throwing on invalid toolset names at runtime (return a validation result instead; only a reserved key in the catalog throws, at construction)
 - Assuming module loaders are synchronous (always await)
 - Using `ToolsetValidator.ts` directly when `ModeResolver.ts` is clearer
 
