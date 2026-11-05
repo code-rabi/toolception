@@ -11,10 +11,11 @@ Handles toolset resolution, validation, and module loading. Bridges toolset defi
 
 ## Invariants
 
-1. **Module loaders fail silently** — Errors caught, logged as warnings, skipped. Toolset activates with whatever tools succeeded. This is intentional — one broken loader should not block the rest.
-2. **ToolsetValidator is in ModeResolver.ts** — Historical naming quirk. `ToolsetValidator.ts` just re-exports from `ModeResolver.ts`. Import from either file.
-3. **ModuleResolver stores catalog; ToolsetValidator takes it as parameter** — Different validation signatures. ModuleResolver validates against its stored catalog; ToolsetValidator is stateless.
-4. **Context passed to module loaders** — Enables dynamic tool generation based on runtime context (e.g., per-client tools).
+1. **`_meta` is rejected** — `RESERVED_TOOLSET_KEYS` (`mode.types.ts`): the `ModuleResolver` constructor throws if the catalog has such a key, and `validateToolsetName()` refuses it again as defense in depth. `moduleLoading.ts` is an empty placeholder (no code, nothing imports it).
+2. **Module loaders fail silently** — Errors caught, logged as warnings, skipped. Toolset activates with whatever tools succeeded. This is intentional — one broken loader should not block the rest.
+3. **ToolsetValidator is in ModeResolver.ts** — Historical naming quirk. `ToolsetValidator.ts` just re-exports from `ModeResolver.ts`. Import from either file.
+4. **ModuleResolver stores catalog; ToolsetValidator takes it as parameter** — Different validation signatures. ModuleResolver validates against its stored catalog; ToolsetValidator is stateless.
+5. **Context passed to module loaders** — Enables dynamic tool generation based on runtime context (e.g., per-client tools).
 
 ## Module Loading Flow
 
@@ -25,7 +26,7 @@ resolveToolsForToolsets([toolsetName], context)
     2. For each module in definition.modules[]:
        → Look up loader in moduleLoaders map
        → Call loader(context) — may be async
-       → Catch errors → warn and skip (invariant #1)
+       → Catch errors → warn and skip (invariant #2)
        → Append returned tools
   Return flattened McpToolDefinition[]
 ```

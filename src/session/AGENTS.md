@@ -14,7 +14,7 @@ Manages per-session context resolution and client resource caching. Enables mult
 
 1. **Fail-secure parsing** — Invalid base64/JSON encoding returns `{}`, not an error. Malformed client input never crashes the server.
 2. **Disallowed keys silently filtered** — No logging to prevent information leakage about what keys exist.
-3. **Cache key includes context hash** — Format: `${clientId}:${sha256suffix}`. Uses SHA-256 of sorted config keys — property order does not affect the hash.
+3. **Cache key includes context hash** — Format: `${clientId}:${sha256suffix}`, built by the transport's `resolveSessionContext()`. When the resolver returns the suffix `"default"` (`enabled: false`, no `?config=` or nothing left after filtering, or a throwing `contextResolver`) the key is the plain `clientId`. The suffix is SHA-256 (first 16 hex chars) of the filtered config as JSON, top-level keys sorted — the values are part of the hash, property order is not.
 4. **LRU eviction triggers cleanup** — onEvict callback called on removal. Transport uses this to close all sessions in an evicted bundle.
 5. **Background pruning interval** — Removes TTL-expired entries periodically. `stop(true)` clears all entries and triggers cleanup.
 

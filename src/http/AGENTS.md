@@ -8,7 +8,7 @@ Provides Fastify-based HTTP transport for the MCP protocol. Handles SSE streams,
 
 - **FastifyTransport** (`FastifyTransport.ts`) — Main HTTP transport. Per-client bundles via ClientResourceCache, optional SessionContextResolver for context differentiation.
 - **Origin validation** (`originValidation.ts`) — `normalizeAllowedOrigins()` + `createOriginGuard()`; each transport applies the guard as an `onRequest` hook on `/mcp` POST/GET/DELETE only, when `allowedOrigins` is set.
-- **Custom Endpoints** (`customEndpoints.ts`, `endpointRegistration.ts`) — Type-safe endpoint definitions with Zod schemas. `defineEndpoint()` / `definePermissionAwareEndpoint()` helpers.
+- **Custom Endpoints** (`http.utils.ts`, types in `http.types.ts`) — Type-safe endpoint definitions with Zod 4 schemas. `defineEndpoint()` / `definePermissionAwareEndpoint()` helpers build them; `registerCustomEndpoints()` mounts them and enforces the reserved paths. Validation failures answer 400 `VALIDATION_ERROR` with Zod 4 issues in `error.details`.
 
 ## Endpoints
 
