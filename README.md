@@ -82,7 +82,7 @@ Toolception addresses this by grouping tools into toolsets and letting you expos
 npm i toolception @modelcontextprotocol/server zod
 ```
 
-Toolception 0.9 is built on MCP TypeScript SDK v2 (`@modelcontextprotocol/server`) and needs Zod 4 (`zod` ^4.6.7); Zod 3 schemas are rejected. Install the same versions toolception depends on, so your app and toolception share one copy of each.
+Toolception 0.9 is built on MCP TypeScript SDK v2 (`@modelcontextprotocol/server`) and needs Zod 4 (`zod` ^4.6.7); Zod 3 schemas are rejected. Install the same versions toolception depends on, so your app and toolception share one copy of each. Toolception needs Node.js 25.3.0 or later.
 
 ### Step 2: Import Toolception
 
@@ -177,7 +177,7 @@ process.on("SIGTERM", async () => {
 
 ## Static startup
 
-Enable some or ALL toolsets at bootstrap. In STATIC mode, a single server instance is created and reused for all clients:
+Enable some or ALL toolsets at bootstrap. In STATIC mode every client gets its own server from `createServer`, with the startup toolsets already loaded:
 
 ```ts
 import { McpServer } from "@modelcontextprotocol/server";
@@ -800,8 +800,8 @@ Wires your MCP SDK server to dynamic/static tool management and a Fastify HTTP t
 Requirements
 
 - `createServer` must be provided.
-- In DYNAMIC mode, a fresh server instance is created per client via `createServer`.
-- In STATIC mode, a single server instance is created once via `createServer` and reused for all clients.
+- In both modes, a fresh server instance is created per client via `createServer`, because the MCP SDK binds one `McpServer` to one transport. In STATIC mode that server loads the startup toolsets with the client's own session context.
+- `createServer` is also called once at startup. That base server is the `server` the handle returns; it is only used to validate the catalog and to serve `/tools`, so register any prompts, resources or extra tools inside `createServer`, not on the returned `server`.
 
 #### options.catalog (required)
 
@@ -821,7 +821,7 @@ Usage and behavior
 | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Key naming       | The object key is the module identifier referenced in `catalog[toolset].modules`. Example: `{ ext: async () => [...] }` and `modules: ["ext"]`.          |
 | Loader signature | `(context?: unknown) => Promise<McpToolDefinition[]>` or `McpToolDefinition[]`                                                                           |
-| When called      | STATIC mode: at startup (for specified toolsets or ALL). DYNAMIC mode: when a toolset is enabled via meta-tools.                                         |
+| When called      | STATIC mode: at startup and again for each connecting client (for specified toolsets or ALL). DYNAMIC mode: when a toolset is enabled via meta-tools.                                         |
 | Return value     | An array of tools to register. Tool names should be unique per toolset; if `namespaceToolsWithSetKey` is true, names are prefixed at registration.       |
 | Errors           | Throwing rejects the enable/preload flow for that toolset and surfaces an error to the caller.                                                           |
 | Idempotency      | Loaders may be invoked multiple times across runs/clients. Keep them deterministic/idempotent. Implement internal caching if they perform expensive I/O. |
@@ -910,8 +910,8 @@ Notes
 - Only `moduleLoaders` receive `context`. Direct tools defined inline in `catalog` do not.
 - Not exposed to clients over HTTP; it stays in-process on the server.
 - Keep it lightweight and stable; prefer passing handles (e.g., db client) rather than huge data blobs.
-- STATIC mode: loaders are invoked at startup with the same `context`.
-- DYNAMIC mode: loaders are invoked at enable time with the same `context`.
+- STATIC mode: loaders run at startup and again for each connecting client, with that client's merged context (the base `context` when no session context applies).
+- DYNAMIC mode: loaders are invoked at enable time with the client's merged context (the base `context` when no session context applies).
 
 Example
 
@@ -953,7 +953,7 @@ Notes
 - Session context is extracted per-request and merged with the base `context` option
 - Each unique session config generates a different cache key, enabling per-tenant module caching
 - Invalid encoding or parsing errors silently fall back to base context (fail-secure)
-- Only applies to DYNAMIC mode servers; STATIC mode uses a single shared server instance
+- Applies to DYNAMIC and STATIC modes alike: each client's merged context reaches the module loaders that build its tools
 
 #### options.http (optional)
 
@@ -1095,6 +1095,8 @@ Note: In STATIC mode, `enable_toolset`, `disable_toolset`, `list_toolsets`, and 
 ## Permission-based client integration
 
 ### Using Header-Based Permissions
+
+The client snippets below use the MCP client package: `npm i @modelcontextprotocol/client`.
 
 When connecting to a permission-based server with header-based permissions, include the `mcp-toolset-permissions` header with a comma-separated list of toolsets:
 
@@ -1604,7 +1606,7 @@ The server operates in one of two primary modes:
 2. **Static mode** (`startup.mode = "STATIC"`)
    - Pre-loads specific toolsets at startup (`toolsets` array or "ALL")
    - Only `list_tools` meta-tool is available (toolsets cannot be changed at runtime)
-   - A single server instance is reused for all clients
+   - Each client gets its own server with the startup toolsets loaded
    - Best for known, consistent tool requirements
 
 ## License
