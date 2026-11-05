@@ -63,4 +63,4 @@ Tests use Vitest with in-memory mocks. Key patterns:
 - Vite for bundling (`vite.config.ts`)
 - vite-plugin-dts for TypeScript declarations
 - ESM-only output (`"type": "module"`)
-- Node.js >= 25.3.0 required
+- Node.js >= 25.3.0 required (`engines`). CI and the release workflow run on Node 26, because vitest 5 supports `^22.12 || ^24 || >=26` and not Node 25
