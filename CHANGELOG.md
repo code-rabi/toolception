@@ -4,25 +4,29 @@ All notable changes to `toolception` are listed here. Versions follow [semver](h
 
 Releases before 0.7.0 are described in [GitHub Releases](https://github.com/code-rabi/toolception/releases).
 
-## [Unreleased]
+## [0.9.0]
 
 ### Breaking
 
-- Toolception now runs on MCP TypeScript SDK v2 and Zod 4. The `@modelcontextprotocol/sdk` dependency is replaced by `@modelcontextprotocol/server` and `@modelcontextprotocol/node`, and `zod` moves from ^3.25 to ^4.6.7. SDK v2 does not read Zod 3 schemas, so the two cannot be upgraded separately.
+- Toolception now runs on MCP TypeScript SDK v2 and Zod 4. The `@modelcontextprotocol/sdk` dependency is replaced by `@modelcontextprotocol/server` and `@modelcontextprotocol/node`, and `zod` moves from ^3.25 to ^4.6.7. SDK v2 does not read Zod 3 schemas, so the two cannot be upgraded separately. ([#35](https://github.com/code-rabi/toolception/pull/35))
   - **Migration:** change your imports to `@modelcontextprotocol/server` (`McpServer`) and `@modelcontextprotocol/client` (`Client`, `StreamableHTTPClientTransport`); install `zod` ^4.6.7; and write tool `inputSchema` values and `defineEndpoint` schemas with Zod 4. `z.record()` needs two arguments in Zod 4. Pass server capabilities as the second `McpServer` argument (`new McpServer(info, { capabilities })`); `capabilities` inside the first argument is rejected by the types.
   - A tool whose `inputSchema` is a Zod 3 schema (or a raw shape holding one) now fails to enable with an `E_VALIDATION` error that names the tool.
   - `createServer` factories must return a v2 `McpServer`; the removed `server.tool()`, `server.prompt()` and `server.resource()` are replaced by `registerTool`, `registerPrompt` and `registerResource`.
 - `defineEndpoint` / `definePermissionAwareEndpoint` validation failures (`VALIDATION_ERROR`, HTTP 400) now carry Zod 4 issue objects in `error.details`: issue codes and messages differ from Zod 3 (for example `invalid_type` messages). Clients that match on the old text must be updated.
-- Calling a tool the server no longer lists (for example a disabled toolset's tool) is now answered with a JSON-RPC error ("Tool ... not found") instead of a result with `isError: true`. This is SDK v2 behaviour.
-- `FastifyTransport` and `PermissionAwareFastifyTransport` use `NodeStreamableHTTPServerTransport` from `@modelcontextprotocol/node`. Session handling, the per-client `mcp-client-id` model and the HTTP endpoints are unchanged: each client still gets its own server, transport and enabled/disabled toolset state.
-- A tool whose `inputSchema` is a plain JSON Schema object (`type: "object"`) is now registered with the SDK's `fromJsonSchema()`: clients see its real properties and arguments are validated against it before your handler runs. Until now such a tool registered as an open object, so its parameters were not advertised and any arguments reached the handler. Invalid arguments now get an error result and the handler is not called.
+- Calling a tool the server no longer lists (for example a disabled toolset's tool) is now answered with a JSON-RPC error ("Tool ... not found") instead of a result with `isError: true`. This is SDK v2 behaviour. ([#35](https://github.com/code-rabi/toolception/pull/35))
+- `FastifyTransport` and `PermissionAwareFastifyTransport` use `NodeStreamableHTTPServerTransport` from `@modelcontextprotocol/node`. Session handling, the per-client `mcp-client-id` model and the HTTP endpoints are unchanged: each client still gets its own server, transport and enabled/disabled toolset state. ([#35](https://github.com/code-rabi/toolception/pull/35))
+- A tool whose `inputSchema` is a plain JSON Schema object (`type: "object"`) is now registered with the SDK's `fromJsonSchema()`: clients see its real properties and arguments are validated against it before your handler runs. Until now such a tool registered as an open object, so its parameters were not advertised and any arguments reached the handler. Invalid arguments now get an error result and the handler is not called. ([#38](https://github.com/code-rabi/toolception/pull/38))
   - **Migration:** if a handler relied on receiving arguments its schema forbids (a missing `required` property, a wrong type, or extra properties under `additionalProperties: false`), loosen the schema or fix the caller.
   - A JSON Schema that cannot be compiled (unknown type name, unresolved `$ref`, unsupported `$schema` dialect) now fails the toolset's enable with an `E_VALIDATION` error that names the tool. So does an `inputSchema` that is neither a Zod 4 shape nor a JSON Schema object (the root `type` must be the string `"object"`, so `type: ["object", "null"]` is refused; this includes a shape that mixes Zod and non-Zod values), which used to register as an open object.
   - Each client's `DynamicToolManager` compiles JSON Schemas with its own validator, so compiled schemas are not shared between clients and are freed with the client. The root `$id` of a tool's schema is not used or advertised (the validator caches by root `$id`, which would give two tools with the same `$id` the first one's validator); reference the root with `#`, not its `$id` URL.
 
 ### Fixed
 
-- Dependency advisories: Zod 4.6.7 clears the high-severity `zod` finding (GHSA-mrhx-c7xc-m3w5); `body-parser`, `qs` and `ip-address` leave the tree with the v1 SDK's Express dependencies; `fastify` 5.12.8 and `fast-uri` 3.1.9 come from a lockfile refresh. `vite-plugin-dts` 5 and a dev-only `minimatch` override clear the last dev-only audit findings; none of this ships in the package.
+- Dependency advisories: Zod 4.6.7 clears the high-severity `zod` finding (GHSA-mrhx-c7xc-m3w5); `body-parser`, `qs` and `ip-address` leave the tree with the v1 SDK's Express dependencies; `fastify` 5.12.8 and `fast-uri` 3.1.9 come from a lockfile refresh. `vite-plugin-dts` 5 and a dev-only `minimatch` override clear the last dev-only audit findings; none of this ships in the package. ([#35](https://github.com/code-rabi/toolception/pull/35), [#36](https://github.com/code-rabi/toolception/pull/36))
+
+### Changed
+
+- CI and the release workflow run on Node 26, because vitest 5 does not support Node 25. `engines` stays `>=25.3.0`, so consumers are unaffected. ([#37](https://github.com/code-rabi/toolception/pull/37))
 
 ## [0.8.0]
 
